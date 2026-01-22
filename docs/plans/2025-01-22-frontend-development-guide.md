@@ -230,7 +230,6 @@ App
 │   ├── SkyMap（中间天空图）
 │   │   ├── Canvas（画布）
 │   │   ├── TimeSlider（时间滑块）
-│   │   ├── Controls（控制按钮）
 │   │   └── TargetTooltip（目标提示框）
 │   │
 │   └── RecommendPanel（右侧推荐面板）
@@ -252,7 +251,6 @@ App
 - 显示当前地点和本地时间
 - 日期选择器
 - 设备配置下拉菜单
-- 全屏切换
 
 **尺寸**:
 - 高度: `64px`
@@ -391,8 +389,8 @@ App
 - 绘制 360° 方位角 × 90° 高度角的天空图
 - 显示深空目标位置
 - 绘制可视区域多边形
-- 时间轴预览
-- 交互：点击、拖拽、缩放
+- 时间轴预览和交互
+- 交互：点击、拖拽目标
 
 **尺寸**:
 - 高度: `calc(100vh - 64px)`
@@ -430,9 +428,7 @@ const skyMapConfig = {
   selectedTarget: null,
   hoveredZone: null,
   isDrawingZone: false,
-  currentZonePoints: [],
-  zoom: 1.0,
-  pan: { x: 0, y: 0 }
+  currentZonePoints: []
 }
 ```
 

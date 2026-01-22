@@ -137,37 +137,6 @@ function setupEventListeners() {
     });
   }
 
-  // Zoom buttons
-  const btnZoomIn = document.getElementById('btnZoomIn');
-  const btnZoomOut = document.getElementById('btnZoomOut');
-  if (btnZoomIn && btnZoomOut) {
-    btnZoomIn.addEventListener('click', () => {
-      if (skyMap) {
-        skyMap.state.zoom = Math.min(2.0, skyMap.state.zoom * 1.2);
-        skyMap.render();
-      }
-    });
-
-    btnZoomOut.addEventListener('click', () => {
-      if (skyMap) {
-        skyMap.state.zoom = Math.max(0.5, skyMap.state.zoom / 1.2);
-        skyMap.render();
-      }
-    });
-  }
-
-  // Fullscreen button
-  const btnFullscreen = document.getElementById('btnFullscreen');
-  if (btnFullscreen) {
-    btnFullscreen.addEventListener('click', () => {
-      if (document.fullscreenElement) {
-        document.exitFullscreen();
-      } else {
-        document.documentElement.requestFullscreen();
-      }
-    });
-  }
-
   // Timeline bar
   const timelineBar = document.querySelector('.timeline-bar');
   if (timelineBar) {

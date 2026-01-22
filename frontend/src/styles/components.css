@@ -386,16 +386,6 @@
   font-weight: var(--font-weight-medium);
 }
 
-/* Zoom Controls */
-.zoom-controls {
-  display: flex;
-  gap: var(--spacing-2);
-}
-
-.zoom-controls button {
-  flex: 1;
-}
-
 /* Location Info */
 .location-info {
   display: flex;
