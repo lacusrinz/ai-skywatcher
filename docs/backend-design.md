@@ -4,6 +4,9 @@
 **技术栈**: Python 3.11+
 **API 设计**: RESTful API
 **数据策略**: Mock 接口
+**文档版本**: 1.1 (已与前端对齐)
+
+**对齐说明**: 本文档已与前端开发文档 (`2025-01-22-frontend-development-guide.md`) 对齐，确保API接口、数据结构、响应格式一致。详见 `api-interface-alignment.md`。
 
 ---
 
@@ -1875,6 +1878,101 @@ python -m app.main
 - 测试参数验证
 - 测试错误处理
 
+**前后端联调测试**:
+- 响应格式验证 (确保返回 `{success, data, message}` 格式)
+- CORS 配置验证
+- 接口契约测试
+
+---
+
+## 9. 前后端对齐说明
+
+### 9.1 API 版本控制
+
+所有 API 端点使用 `/api/v1` 前缀进行版本控制:
+
+```python
+# app/main.py
+app.include_router(
+    locations.router,
+    prefix="/api/v1/locations",
+    tags=["locations"]
+)
+```
+
+### 9.2 响应格式标准
+
+**成功响应**:
+```python
+return {
+    "success": True,
+    "data": { /* 实际数据 */ },
+    "message": "操作成功"
+}
+```
+
+**错误响应**:
+```python
+return {
+    "success": False,
+    "error": {
+        "code": "VALIDATION_ERROR",
+        "message": "参数验证失败",
+        "details": []
+    }
+}
+```
+
+### 9.3 CORS 配置
+
+更新 CORS 配置以支持前端开发服务器:
+
+```python
+# app/main.py
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",  # Vite 默认端口
+        "http://localhost:3000",  # 其他开发服务器
+        "http://localhost:8000",  # 生产环境
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+### 9.4 接口端点对照表
+
+| 模块 | 功能 | 端点 | 方法 | 前端调用方式 |
+|------|------|------|------|-------------|
+| **Locations** | 自动定位 | `/api/v1/locations/geolocate` | POST | `POST /locations/geolocate` |
+| | 获取列表 | `/api/v1/locations` | GET | `GET /locations` |
+| | 保存地点 | `/api/v1/locations` | POST | `POST /locations` |
+| | 删除地点 | `/api/v1/locations/{id}` | DELETE | `DELETE /locations/{id}` |
+| **Equipment** | 获取预设 | `/api/v1/equipment/presets` | GET | `GET /equipment/presets` |
+| | 计算 FOV | `/api/v1/equipment/calculate-fov` | POST | `POST /equipment/calculate-fov` |
+| | 保存配置 | `/api/v1/equipment` | POST | `POST /equipment` |
+| **Targets** | 获取列表 | `/api/v1/targets` | GET | `GET /targets` |
+| | 获取详情 | `/api/v1/targets/{id}` | GET | `GET /targets/{id}` |
+| | 搜索 | `/api/v1/targets/search` | GET | `GET /targets/search?q=` |
+| **Visibility** | 计算位置 | `/api/v1/visibility/position` | POST | `POST /visibility/position` |
+| | 计算窗口 | `/api/v1/visibility/windows` | POST | `POST /visibility/windows` |
+| | 批量位置 | `/api/v1/visibility/positions-batch` | POST | `POST /visibility/positions-batch` |
+| **Zones** | 获取列表 | `/api/v1/visible-zones` | GET | `GET /visible-zones` |
+| | 创建区域 | `/api/v1/visible-zones` | POST | `POST /visible-zones` |
+| | 更新区域 | `/api/v1/visible-zones/{id}` | PUT | `PUT /visible-zones/{id}` |
+| | 删除区域 | `/api/v1/visible-zones/{id}` | DELETE | `DELETE /visible-zones/{id}` |
+| **Recommend** | 获取推荐 | `/api/v1/recommendations` | POST | `POST /recommendations` |
+| | 按时段 | `/api/v1/recommendations/by-period` | POST | `POST /recommendations/by-period` |
+| | 统计 | `/api/v1/recommendations/summary` | POST | `POST /recommendations/summary` |
+| **SkyMap** | 天空图 | `/api/v1/sky-map/data` | POST | `POST /sky-map/data` |
+| | 时间轴 | `/api/v1/sky-map/timeline` | POST | `POST /sky-map/timeline` |
+
+---
+
+## 10. 测试策略
+
 **示例测试**:
 
 ```python
@@ -3059,6 +3157,6 @@ async def safe_query_target(target_id: str):
 
 ---
 
-**文档版本**: 1.0
+**文档版本**: 1.1
 **最后更新**: 2025-01-22
 **维护者**: 开发团队

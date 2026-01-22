@@ -1,9 +1,11 @@
 # 深空拍摄目标推荐工具 - 前端开发文档
 
-**文档版本**: 1.0
+**文档版本**: 1.1 (已与后端对齐)
 **创建日期**: 2025-01-22
 **基于设计文档**: 2025-01-21-deep-sky-target-recommender-design.md
 **设计稿**: MasterGo - sky-watcher
+
+**对齐说明**: 本文档已与后端设计文档 (`backend-design.md`) 对齐，确保API接口、数据结构、响应格式一致。详见 `api-interface-alignment.md`。
 
 ---
 
@@ -832,8 +834,8 @@ store.setState({
 ```javascript
 // src/scripts/api.js
 const API = {
-  // 基础 URL（实际开发时替换为真实 API）
-  baseURL: '/api',
+  // 基础 URL（与后端对齐，使用版本化的 API）
+  baseURL: '/api/v1',
 
   // 请求延迟（模拟网络）
   delay: 100,
@@ -855,26 +857,42 @@ const API = {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
-    return response.json();
+    const result = await response.json();
+
+    // 统一处理响应格式（后端返回 {success, data, message}）
+    if (!result.success) {
+      throw new Error(result.error?.message || '请求失败');
+    }
+
+    return result.data; // 返回实际数据
   },
 
   // ===== 地理定位 =====
 
-  // 自动获取位置
+  // 自动获取位置（改为 POST）
   async getCurrentLocation() {
-    return this.request('/location/current');
+    return this.request('/locations/geolocate', {
+      method: 'POST'
+    });
   },
 
   // 获取保存的地点列表
   async getSavedLocations() {
-    return this.request('/location/saved');
+    return this.request('/locations');
   },
 
   // 保存地点
   async saveLocation(location) {
-    return this.request('/location/saved', {
+    return this.request('/locations', {
       method: 'POST',
       body: JSON.stringify(location)
+    });
+  },
+
+  // 删除地点（新增）
+  async deleteLocation(locationId) {
+    return this.request(`/locations/${locationId}`, {
+      method: 'DELETE'
     });
   },
 
@@ -885,9 +903,21 @@ const API = {
     return this.request('/equipment/presets');
   },
 
+  // 计算 FOV（新增）
+  async calculateFOV(sensorWidth, sensorHeight, focalLength) {
+    return this.request('/equipment/calculate-fov', {
+      method: 'POST',
+      body: JSON.stringify({
+        sensor_width: sensorWidth,
+        sensor_height: sensorHeight,
+        focal_length: focalLength
+      })
+    });
+  },
+
   // 保存设备配置
   async saveEquipment(equipment) {
-    return this.request('/equipment/config', {
+    return this.request('/equipment', {
       method: 'POST',
       body: JSON.stringify(equipment)
     });
@@ -895,58 +925,136 @@ const API = {
 
   // ===== 可视区域 =====
 
-  // 获取保存的可视区域
+  // 获取保存的可视区域（路径改为 /visible-zones）
   async getVisibleZones() {
-    return this.request('/zones');
+    return this.request('/visible-zones');
   },
 
   // 保存可视区域
   async saveVisibleZone(zone) {
-    return this.request('/zones', {
+    return this.request('/visible-zones', {
       method: 'POST',
       body: JSON.stringify(zone)
     });
   },
 
-  // 删除可视区域
+  // 更新可视区域（新增）
+  async updateVisibleZone(zoneId, zone) {
+    return this.request(`/visible-zones/${zoneId}`, {
+      method: 'PUT',
+      body: JSON.stringify(zone)
+    });
+  },
+
+  // 删除可视区域（路径改为 /visible-zones）
   async deleteVisibleZone(zoneId) {
-    return this.request(`/zones/${zoneId}`, {
+    return this.request(`/visible-zones/${zoneId}`, {
       method: 'DELETE'
     });
   },
 
   // ===== 深空目标 =====
 
-  // 获取深空目标列表
-  async getDeepskyObjects() {
-    return this.request('/objects');
+  // 获取深空目标列表（路径改为 /targets）
+  async getDeepskyObjects(params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return this.request(`/targets${query ? `?${query}` : ''}`);
   },
 
-  // 获取单个目标详情
+  // 获取单个目标详情（路径改为 /targets）
   async getDeepskyObject(targetId) {
-    return this.request(`/objects/${targetId}`);
+    return this.request(`/targets/${targetId}`);
+  },
+
+  // 搜索目标（新增）
+  async searchTargets(query) {
+    return this.request(`/targets/search?q=${encodeURIComponent(query)}`);
   },
 
   // ===== 推荐 =====
 
-  // 获取推荐目标（按时段）
+  // 获取推荐目标（改为 POST，使用请求体）
   async getRecommendations(params) {
-    const query = new URLSearchParams(params).toString();
-    return this.request(`/recommendations?${query}`);
+    return this.request('/recommendations', {
+      method: 'POST',
+      body: JSON.stringify(params)
+    });
   },
 
-  // 获取目标的实时位置
-  async getTargetPosition(targetId, time) {
-    const query = new URLSearchParams({ time: time.toISOString() }).toString();
-    return this.request(`/objects/${targetId}/position?${query}`);
+  // 按时段获取推荐（新增）
+  async getRecommendationsByPeriod(period, params) {
+    return this.request('/recommendations/by-period', {
+      method: 'POST',
+      body: JSON.stringify({
+        period: period,
+        ...params
+      })
+    });
+  },
+
+  // 获取推荐统计（新增）
+  async getRecommendationsSummary(params) {
+    return this.request('/recommendations/summary', {
+      method: 'POST',
+      body: JSON.stringify(params)
+    });
+  },
+
+  // ===== 可见性计算（新增）=====
+
+  // 获取目标的实时位置（改为 POST）
+  async getTargetPosition(targetId, location, timestamp) {
+    return this.request('/visibility/position', {
+      method: 'POST',
+      body: JSON.stringify({
+        target_id: targetId,
+        location: location,
+        timestamp: timestamp.toISOString()
+      })
+    });
+  },
+
+  // 计算目标的可见窗口（新增）
+  async getVisibilityWindows(targetId, location, date, visibleZones) {
+    return this.request('/visibility/windows', {
+      method: 'POST',
+      body: JSON.stringify({
+        target_id: targetId,
+        location: location,
+        date: date,
+        visible_zones: visibleZones
+      })
+    });
+  },
+
+  // 批量计算目标位置（新增）
+  async getBatchTargetPositions(targetIds, location, timestamp) {
+    return this.request('/visibility/positions-batch', {
+      method: 'POST',
+      body: JSON.stringify({
+        target_ids: targetIds,
+        location: location,
+        timestamp: timestamp.toISOString()
+      })
+    });
   },
 
   // ===== 天空图 =====
 
-  // 获取天空图渲染数据
+  // 获取天空图渲染数据（改为 POST）
   async getSkyMapData(params) {
-    const query = new URLSearchParams(params).toString();
-    return this.request(`/skymap?${query}`);
+    return this.request('/sky-map/data', {
+      method: 'POST',
+      body: JSON.stringify(params)
+    });
+  },
+
+  // 获取时间轴数据（新增）
+  async getSkyMapTimeline(params) {
+    return this.request('/sky-map/timeline', {
+      method: 'POST',
+      body: JSON.stringify(params)
+    });
   }
 };
 ```
@@ -1920,6 +2028,139 @@ function drawDebugInfo(ctx) {
 
 ## 附录
 
+### A. API 接口总览
+
+与后端对齐后的完整 API 接口列表:
+
+| 模块 | 功能 | 端点 | 方法 | 说明 |
+|------|------|------|------|------|
+| **Locations** | 自动定位 | `/locations/geolocate` | POST | 获取当前地理位置 |
+| | 获取列表 | `/locations` | GET | 获取保存的地点列表 |
+| | 保存地点 | `/locations` | POST | 保存新地点 |
+| | 删除地点 | `/locations/{id}` | DELETE | 删除保存的地点 |
+| **Equipment** | 获取预设 | `/equipment/presets` | GET | 获取设备预设列表 |
+| | 计算 FOV | `/equipment/calculate-fov` | POST | 计算视场角 |
+| | 保存配置 | `/equipment` | POST | 保存自定义设备 |
+| **Targets** | 获取列表 | `/targets` | GET | 获取深空目标列表 |
+| | 获取详情 | `/targets/{id}` | GET | 获取目标详情 |
+| | 搜索 | `/targets/search` | GET | 搜索目标 |
+| **Visibility** | 计算位置 | `/visibility/position` | POST | 计算目标实时位置 |
+| | 计算窗口 | `/visibility/windows` | POST | 计算可见窗口 |
+| | 批量位置 | `/visibility/positions-batch` | POST | 批量计算位置 |
+| **Zones** | 获取列表 | `/visible-zones` | GET | 获取可视区域列表 |
+| | 创建区域 | `/visible-zones` | POST | 创建可视区域 |
+| | 更新区域 | `/visible-zones/{id}` | PUT | 更新可视区域 |
+| | 删除区域 | `/visible-zones/{id}` | DELETE | 删除可视区域 |
+| **Recommend** | 获取推荐 | `/recommendations` | POST | 获取推荐目标 |
+| | 按时段 | `/recommendations/by-period` | POST | 按时段获取推荐 |
+| | 统计 | `/recommendations/summary` | POST | 获取推荐统计 |
+| **SkyMap** | 天空图 | `/sky-map/data` | POST | 获取天空图数据 |
+| | 时间轴 | `/sky-map/timeline` | POST | 获取时间轴数据 |
+
+**注意**: 所有端点都使用 `/api/v1` 前缀，完整路径如 `/api/v1/locations`。
+
+### B. 与后端对齐的主要变更
+
+#### B.1 Base URL 变更
+```javascript
+// 修改前
+baseURL: '/api'
+
+// 修改后
+baseURL: '/api/v1'
+```
+
+#### B.2 响应格式处理
+```javascript
+// 后端统一返回格式: {success, data, message}
+// 前端需要解包 data 字段
+
+async request(endpoint, options = {}) {
+  // ...
+  const result = await response.json();
+
+  if (!result.success) {
+    throw new Error(result.error?.message || '请求失败');
+  }
+
+  return result.data; // 返回实际数据
+}
+```
+
+#### B.3 接口路径变更
+```javascript
+// 位置接口: /location → /locations
+GET /location/current → POST /locations/geolocate
+GET /location/saved → GET /locations
+
+// 目标接口: /objects → /targets
+GET /objects → GET /targets
+GET /objects/{id} → GET /targets/{id}
+
+// 可视区域: /zones → /visible-zones
+GET /zones → GET /visible-zones
+POST /zones → POST /visible-zones
+```
+
+#### B.4 请求方法变更
+```javascript
+// 推荐接口: GET → POST
+// 修改前
+GET /recommendations?period=tonight-golden
+
+// 修改后
+POST /recommendations
+Body: {
+  location: {...},
+  date: "2025-01-22",
+  equipment: {...},
+  visible_zones: [...],
+  limit: 20
+}
+
+// 可见性接口: GET → POST
+// 修改前
+GET /objects/{id}/position?time=2025-01-22T20:30:00Z
+
+// 修改后
+POST /visibility/position
+Body: {
+  target_id: "M42",
+  location: {...},
+  timestamp: "2025-01-22T20:30:00Z"
+}
+```
+
+### C. 数据结构对照表
+
+| 数据类型 | 前端接口 | 后端模型 | 说明 |
+|---------|---------|---------|------|
+| Location | `{lat, lng, name}` | `Location` | 使用 `latitude`/`longitude` 而非 `lat`/`lng` |
+| Equipment | `{sensor, focal, fov}` | `Equipment` | 统一字段命名 |
+| Target | `{id, name, type, ...}` | `DeepSkyTarget` | 完全对齐 |
+| VisibleZone | `{id, polygon: [[az, alt], ...]}` | `VisibleZone` | 完全对齐 |
+| Recommendation | `{target, score, windows, ...}` | `Recommendation` | 完全对齐 |
+
+### D. 迁移检查清单
+
+在将现有前端代码迁移到对齐后的 API 时，请检查以下项目:
+
+- [ ] 更新 `baseURL` 为 `/api/v1`
+- [ ] 更新响应处理逻辑，解包 `data` 字段
+- [ ] 替换所有 `/location/` 为 `/locations/`
+- [ ] 替换所有 `/objects` 为 `/targets`
+- [ ] 替换所有 `/zones` 为 `/visible-zones`
+- [ ] 更新推荐接口为 POST，使用请求体
+- [ ] 更新可见性接口为 POST，使用请求体
+- [ ] 更新天空图接口为 POST，使用请求体
+- [ ] 添加新增的接口方法 (搜索、统计、FOV计算等)
+- [ ] 测试所有接口调用
+- [ ] 验证错误处理逻辑
+
+---
+
+## 原有附录
+
 ### A. 参考资源
 
 - [astronomy-engine](https://github.com/cosinekitty/astronomy) - 天文计算库
@@ -1963,6 +2204,6 @@ A: 与已知的星历表数据对比，确保误差 < 0.1°。
 
 ---
 
-**文档版本**: 1.0
+**文档版本**: 1.1
 **最后更新**: 2025-01-22
 **维护者**: 开发团队
