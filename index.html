@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Skywatcher - 天文观测助手</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- 顶部导航栏 -->
+    <header class="header">
+        <div class="header-left">
+            <div class="location-info">
+                <svg class="location-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M8 0C5.243 0 3 2.243 3 5c0 3.5 4.5 8.5 5 9 .5-.5 5-5.5 5-9 0-2.757-2.243-5-5-5zm0 7.5c-1.38 0-2.5-1.12-2.5-2.5S6.62 2.5 8 2.5s2.5 1.12 2.5 2.5S9.38 7.5 8 7.5z"/>
+                </svg>
+                <span class="location-text">北京市 海淀区</span>
+            </div>
+            <div class="datetime-info">2026-01-21 08:04:43</div>
+        </div>
+        <div class="header-right">
+            <div class="date-selector">
+                <span>2024-01-15</span>
+                <svg class="dropdown-icon" width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                    <path d="M6 9L1 4h10z"/>
+                </svg>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主内容区 -->
+    <main class="main-content">
+        <!-- 左侧控制面板 -->
+        <aside class="control-panel">
+            <!-- 位置设置 -->
+            <section class="panel-section">
+                <div class="section-header">
+                    <svg class="section-icon" width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M10 0C6.13 0 3 3.13 3 7c0 4.5 5.5 10.5 7 13 1.5-2.5 7-8.5 7-13 0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S8.62 4.5 10 4.5s2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                    </svg>
+                    <h2 class="section-title">位置设置</h2>
+                </div>
+                <button class="btn-auto-location">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M8 2C6.34 2 5 3.34 5 5c0 1.5 2 4 3 5.5C9 9 11 6.5 11 5c0-1.66-1.34-3-3-3zm0 4c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z"/>
+                    </svg>
+                    自动定位
+                </button>
+                <div class="input-group">
+                    <div class="input-field">
+                        <label>经度</label>
+                        <input type="text" value="116.3975" />
+                    </div>
+                    <div class="input-field">
+                        <label>纬度</label>
+                        <input type="text" value="39.9075" />
+                    </div>
+                </div>
+                <div class="input-field">
+                    <label>常用地点</label>
+                    <select>
+                        <option>北京天文馆</option>
+                    </select>
+                </div>
+            </section>
+
+            <!-- 设备配置 -->
+            <section class="panel-section">
+                <div class="section-header">
+                    <svg class="section-icon" width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M10 2C5.58 2 2 5.58 2 10s3.58 8 8 8 8-3.58 8-8-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6z"/>
+                    </svg>
+                    <h2 class="section-title">设备配置</h2>
+                </div>
+                <div class="input-field">
+                    <label>预设组合</label>
+                    <select>
+                        <option>标准望远镜 (8 英寸)</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <div class="input-field">
+                        <label>传感器宽度 (mm)</label>
+                        <input type="text" value="24" />
+                    </div>
+                    <div class="input-field">
+                        <label>焦距 (mm)</label>
+                        <input type="text" value="2000" />
+                    </div>
+                </div>
+                <div class="input-field">
+                    <label>FOV 预览</label>
+                    <div class="fov-preview">
+                        <span>视野范围: 1.2° × 0.8°</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 可视区域 -->
+            <section class="panel-section">
+                <div class="section-header">
+                    <svg class="section-icon" width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M10 2L3 7v6l7 5 7-5V7l-7-5zm0 2.5L15 8v4l-5 3.5L5 12V8l5-3.5z"/>
+                    </svg>
+                    <h2 class="section-title">可视区域</h2>
+                </div>
+                <div class="visibility-info">
+                    <div>方位角: 0° - 360°</div>
+                    <div>高度角: 0° - 90°</div>
+                </div>
+                <div class="button-group">
+                    <button class="btn-secondary">编辑</button>
+                    <button class="btn-danger">删除</button>
+                </div>
+            </section>
+        </aside>
+
+        <!-- 中间星空图 -->
+        <section class="sky-chart">
+            <div class="chart-header">
+                <h2>天空图</h2>
+                <p>实时星空观测视图</p>
+            </div>
+            <div class="chart-container">
+                <div class="chart-canvas">
+                    <!-- 星空背景 -->
+                    <div class="stars-background"></div>
+                    <!-- 方位标记 -->
+                    <div class="direction-marker n">N</div>
+                    <div class="direction-marker s">S</div>
+                    <div class="direction-marker e">E</div>
+                    <div class="direction-marker w">W</div>
+                    <!-- 天体标记 -->
+                    <div class="celestial-object" style="left: 40%; top: 25%; background: #FACC15;"></div>
+                    <div class="celestial-object" style="left: 70%; top: 35%; background: #60A5FA;"></div>
+                    <div class="celestial-object" style="left: 30%; top: 70%; background: #C084FC;"></div>
+                </div>
+            </div>
+            <div class="chart-controls">
+                <div class="timeline">
+                    <div class="timeline-label">时间轴</div>
+                    <div class="timeline-bar">
+                        <div class="timeline-progress"></div>
+                    </div>
+                    <div class="timeline-time">20:30</div>
+                </div>
+                <div class="zoom-controls">
+                    <button class="btn-zoom">放大</button>
+                    <button class="btn-zoom">缩小</button>
+                    <button class="btn-primary">全屏</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 右侧推荐列表 -->
+        <aside class="targets-panel">
+            <!-- 时间筛选 -->
+            <div class="time-filter">
+                <button class="filter-btn active">今晚黄金</button>
+                <button class="filter-btn">后半夜</button>
+                <button class="filter-btn">黎明前</button>
+            </div>
+
+            <!-- 排序 -->
+            <div class="sort-bar">
+                <span>排序:</span>
+                <select>
+                    <option>推荐指数</option>
+                </select>
+            </div>
+
+            <!-- 天体目标列表 -->
+            <div class="targets-list">
+                <!-- 目标1: M42 -->
+                <div class="target-card">
+                    <div class="target-header">
+                        <h3>M42 - 猎户座大星云</h3>
+                        <span class="target-type nebula">星云</span>
+                    </div>
+                    <div class="target-details">
+                        <div><span>星等:</span> <strong>-1.5</strong></div>
+                        <div><span>视大小:</span> <strong>1° × 0.75°</strong></div>
+                        <div><span>最佳时段:</span> <strong>20:30 - 23:45</strong></div>
+                        <div><span>当前高度:</span> <strong>45°</strong></div>
+                        <div><span>方位角:</span> <strong>120°</strong></div>
+                    </div>
+                    <div class="target-rating">
+                        <span>推荐指数</span>
+                        <strong class="rating-excellent">92</strong>
+                    </div>
+                    <div class="rating-bar">
+                        <div class="rating-fill" style="width: 92%; background: #22C55E;"></div>
+                    </div>
+                </div>
+
+                <!-- 目标2: M31 -->
+                <div class="target-card">
+                    <div class="target-header">
+                        <h3>M31 - 仙女座星系</h3>
+                        <span class="target-type galaxy">星系</span>
+                    </div>
+                    <div class="target-details">
+                        <div><span>星等:</span> <strong>3.4</strong></div>
+                        <div><span>视大小:</span> <strong>3° × 1°</strong></div>
+                        <div><span>最佳时段:</span> <strong>21:00 - 01:30</strong></div>
+                        <div><span>当前高度:</span> <strong>32°</strong></div>
+                        <div><span>方位角:</span> <strong>30°</strong></div>
+                    </div>
+                    <div class="target-rating">
+                        <span>推荐指数</span>
+                        <strong class="rating-good">78</strong>
+                    </div>
+                    <div class="rating-bar">
+                        <div class="rating-fill" style="width: 78%; background: #EAB308;"></div>
+                    </div>
+                </div>
+
+                <!-- 目标3: M45 -->
+                <div class="target-card">
+                    <div class="target-header">
+                        <h3>M45 - 昴宿星团</h3>
+                        <span class="target-type cluster">星团</span>
+                    </div>
+                    <div class="target-details">
+                        <div><span>星等:</span> <strong>1.6</strong></div>
+                        <div><span>视大小:</span> <strong>2° × 2°</strong></div>
+                        <div><span>最佳时段:</span> <strong>19:30 - 22:00</strong></div>
+                        <div><span>当前高度:</span> <strong>58°</strong></div>
+                        <div><span>方位角:</span> <strong>240°</strong></div>
+                    </div>
+                    <div class="target-rating">
+                        <span>推荐指数</span>
+                        <strong class="rating-fair">65</strong>
+                    </div>
+                    <div class="rating-bar">
+                        <div class="rating-fill" style="width: 65%; background: #F97316;"></div>
+                    </div>
+                </div>
+
+                <!-- 目标4: M1 -->
+                <div class="target-card">
+                    <div class="target-header">
+                        <h3>M1 - 蟹状星云</h3>
+                        <span class="target-type nebula">星云</span>
+                    </div>
+                    <div class="target-details">
+                        <div><span>星等:</span> <strong>8.4</strong></div>
+                        <div><span>视大小:</span> <strong>6' × 4'</strong></div>
+                        <div><span>最佳时段:</span> <strong>20:00 - 23:30</strong></div>
+                        <div><span>当前高度:</span> <strong>28°</strong></div>
+                        <div><span>方位角:</span> <strong>180°</strong></div>
+                    </div>
+                    <div class="target-rating">
+                        <span>推荐指数</span>
+                        <strong class="rating-excellent">88</strong>
+                    </div>
+                    <div class="rating-bar">
+                        <div class="rating-fill" style="width: 88%; background: #22C55E;"></div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>
