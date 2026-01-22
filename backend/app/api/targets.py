@@ -50,6 +50,20 @@ async def list_targets(
     }
 
 
+@router.get("/search")
+async def search_targets(q: str = Query(..., description="搜索关键词")) -> dict:
+    """搜索目标"""
+    results = mock_service.search_targets(q)
+
+    return {
+        "success": True,
+        "data": {
+            "results": [t.model_dump() for t in results]
+        },
+        "message": "搜索成功"
+    }
+
+
 @router.get("/{target_id}")
 async def get_target(target_id: str) -> dict:
     """获取单个目标详情"""
@@ -62,18 +76,4 @@ async def get_target(target_id: str) -> dict:
         "success": True,
         "data": target.model_dump(),
         "message": "获取成功"
-    }
-
-
-@router.get("/search/")
-async def search_targets(q: str = Query(..., description="搜索关键词")) -> dict:
-    """搜索目标"""
-    results = mock_service.search_targets(q)
-
-    return {
-        "success": True,
-        "data": {
-            "results": [t.model_dump() for t in results]
-        },
-        "message": "搜索成功"
     }

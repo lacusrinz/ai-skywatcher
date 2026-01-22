@@ -249,7 +249,12 @@ App
 
 **功能**:
 - 显示当前地点和本地时间
-- 日期选择器
+- 日期选择器（用于规划未来观测）
+  - 点击显示日历选择器
+  - 默认显示当前日期
+  - 支持选择未来任意日期
+  - 选择日期后自动重新加载推荐
+  - 格式：YYYY-MM-DD
 - 设备配置下拉菜单
 
 **尺寸**:
@@ -306,6 +311,10 @@ App
 **功能**:
 - 位置设置（自动/手动）
 - 设备配置（预设/自定义）
+  - 预设切换时自动更新传感器尺寸、焦距和 FOV
+  - "自定义"预设下可手动输入传感器尺寸和焦距
+  - 非自定义预设下输入框禁用（只读）
+  - 输入变化时自动计算 FOV
 - 可视区域管理
 
 **尺寸**:
@@ -352,17 +361,75 @@ App
 // 设备配置
 {
   presets: [
-    { id: "eq-1", name: "全画幅 + 200mm", sensor: "full-frame", focal: 200 },
-    { id: "eq-2", name: "APS-C + 85mm", sensor: "aps-c", focal: 85 },
-    { id: "eq-3", name: "M4/3 + 300mm", sensor: "m43", focal: 300 }
+    {
+      id: "eq-1",
+      name: "全画幅 + 200mm",
+      sensor: "full-frame",
+      sensorWidth: 36,
+      sensorHeight: 24,
+      focal: 200,
+      fovH: 10.3,
+      fovV: 6.9
+    },
+    {
+      id: "eq-2",
+      name: "全画幅 + 85mm",
+      sensor: "full-frame",
+      sensorWidth: 36,
+      sensorHeight: 24,
+      focal: 85,
+      fovH: 23.9,
+      fovV: 16.0
+    },
+    {
+      id: "eq-3",
+      name: "全画幅 + 50mm",
+      sensor: "full-frame",
+      sensorWidth: 36,
+      sensorHeight: 24,
+      focal: 50,
+      fovH: 39.6,
+      fovV: 26.7
+    },
+    {
+      id: "eq-4",
+      name: "APS-C + 85mm",
+      sensor: "aps-c",
+      sensorWidth: 23.6,
+      sensorHeight: 15.6,
+      focal: 85,
+      fovH: 15.2,
+      fovV: 10.1
+    },
+    {
+      id: "eq-5",
+      name: "APS-C + 50mm",
+      sensor: "aps-c",
+      sensorWidth: 23.6,
+      sensorHeight: 15.6,
+      focal: 50,
+      fovH: 25.8,
+      fovV: 17.1
+    },
+    {
+      id: "custom",
+      name: "自定义",
+      sensor: "custom",
+      sensorWidth: 0,
+      sensorHeight: 0,
+      focal: 0,
+      fovH: 0,
+      fovV: 0
+    }
   ],
   currentEquipment: {
+    id: "eq-1",
     sensorSize: "full-frame",
     sensorWidth: 36, // mm
     sensorHeight: 24, // mm
     focalLength: 200, // mm
-    fovH: 10.5, // 度
-    fovV: 7.0   // 度
+    fovH: 10.3, // 度
+    fovV: 6.9   // 度
   }
 }
 
@@ -734,7 +801,7 @@ const state = {
   // 天空图状态
   skyMap: {
     currentTime: new Date(),
-    selectedDate: new Date(),
+    selectedDate: new Date(), // 用户选择的观测日期（默认今天）
     hoveredTarget: null,
     selectedTarget: null,
     zoom: 1.0,

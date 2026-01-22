@@ -1,1 +1,0 @@
-sky watcher start

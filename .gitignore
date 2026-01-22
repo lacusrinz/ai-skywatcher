@@ -9,6 +9,36 @@ dist/
 build/
 *.local
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist-eggs/
+.eggs/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.Python
+*.pyc
+*.pyo
+*.db
+*.sqlite
+*.sqlite3
+
 # Editor
 .vscode/*
 !.vscode/extensions.json
@@ -25,6 +55,7 @@ Thumbs.db
 logs/
 *.log
 npm-debug.log*
+*.log.*
 
 # Environment
 .env
@@ -35,6 +66,7 @@ npm-debug.log*
 coverage/
 .nyc_output/
 .playwright-mcp/
+.pytest_cache/
 
 # Misc
 .cache/

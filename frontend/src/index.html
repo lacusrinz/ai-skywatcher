@@ -26,10 +26,7 @@
       </div>
       <div class="header-right">
         <div class="date-selector">
-          <span>2024-01-15</span>
-          <svg class="dropdown-icon" width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-            <path d="M6 9L1 4h10z"/>
-          </svg>
+          <input type="date" id="datePicker" class="date-input">
         </div>
       </div>
     </header>
@@ -87,11 +84,15 @@
           <div class="input-group">
             <div class="input-field">
               <label>传感器宽度 (mm)</label>
-              <input type="text" value="24" id="inputSensor">
+              <input type="number" step="0.1" value="36" id="inputSensorWidth">
+            </div>
+            <div class="input-field">
+              <label>传感器高度 (mm)</label>
+              <input type="number" step="0.1" value="24" id="inputSensorHeight">
             </div>
             <div class="input-field">
               <label>焦距 (mm)</label>
-              <input type="text" value="2000" id="inputFocal">
+              <input type="number" step="1" value="200" id="inputFocal">
             </div>
           </div>
           <div class="input-field">

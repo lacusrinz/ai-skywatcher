@@ -1,6 +1,6 @@
 """Astronomy service for celestial calculations"""
 from typing import Tuple
-from datetime import datetime
+from datetime import datetime, timedelta
 import math
 
 
@@ -122,12 +122,8 @@ class AstronomyService:
         # 简化实现
         base_hour = 18
         rise_time = date.replace(hour=base_hour, minute=30, second=0, microsecond=0)
-        transit_time = date.replace(hour=base_hour + 5, minute=0, second=0, microsecond=0)
-        set_time = date.replace(hour=base_hour + 11, minute=30, second=0, microsecond=0)
-
-        # 如果落下时间跨天，则调整
-        if set_time < rise_time:
-            set_time += datetime.timedelta(days=1)
+        transit_time = rise_time + timedelta(hours=5)
+        set_time = rise_time + timedelta(hours=11, minutes=30)
 
         # 计算中天高度
         transit_alt = 90 - abs(observer_lat - target_dec)

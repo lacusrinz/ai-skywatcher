@@ -15,6 +15,16 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    open: true
+    open: true,
+    proxy: {
+      // 代理 API 请求到后端服务
+      '/api/v1': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false,
+        // 保持路径不变
+        rewrite: (path) => path
+      }
+    }
   }
 });
