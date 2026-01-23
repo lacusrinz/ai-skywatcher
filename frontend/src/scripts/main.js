@@ -2,6 +2,17 @@
 import { store } from './store.js';
 import { SkyMapCanvas } from './utils/canvas.js';
 import API from './api.js';
+import {
+  getSavedLocations,
+  addSavedLocation,
+  deleteSavedLocation,
+  saveCurrentLocation,
+  getCurrentLocation,
+  getSavedEquipment,
+  saveEquipment,
+  getSavedDate,
+  saveDate
+} from './utils/storage.js';
 
 // App State
 let skyMap = null;
@@ -10,10 +21,21 @@ let currentEquipment = { fov_horizontal: 10.3, fov_vertical: 6.9 };
 let equipmentPresets = [];
 let currentPresetId = null;
 let selectedDate = new Date(); // 用户选择的观测日期
+let savedLocations = [];
+let selectedLocationId = null; // 当前选中的常用地点 ID
 
 // Initialize App
 function initApp() {
   console.log('AI Skywatcher initializing...');
+
+  // Load saved locations from localStorage
+  loadSavedLocations();
+
+  // Load saved date
+  const savedDate = getSavedDate();
+  if (savedDate) {
+    selectedDate = new Date(savedDate);
+  }
 
   // Initialize date picker with current date
   initDatePicker();
@@ -21,9 +43,16 @@ function initApp() {
   // Initialize Sky Map Canvas
   const canvas = document.getElementById('skyMapCanvas');
   if (canvas) {
+    // 动态获取容器尺寸
+    const container = canvas.parentElement;
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight || containerWidth; // 如果没有高度，使用宽度（正方形）
+
+    console.log('Canvas container size:', containerWidth, 'x', containerHeight);
+
     skyMap = new SkyMapCanvas(canvas, {
-      width: 800,
-      height: 800
+      width: containerWidth,
+      height: containerHeight
     });
 
     // Set target select callback
@@ -49,6 +78,173 @@ function initApp() {
   startClock();
 
   console.log('AI Skywatcher initialized');
+}
+
+// Load Saved Locations from localStorage
+function loadSavedLocations() {
+  savedLocations = getSavedLocations();
+  updateLocationSelect();
+  console.log('Loaded saved locations:', savedLocations.length);
+}
+
+// Update Location Select Dropdown
+function updateLocationSelect() {
+  const selectLocation = document.getElementById('selectLocation');
+  if (!selectLocation) return;
+
+  if (savedLocations.length === 0) {
+    selectLocation.innerHTML = '<option value="">常用地点 (0)</option>';
+  } else {
+    selectLocation.innerHTML = '<option value="">常用地点 (' + savedLocations.length + ')</option>' +
+      savedLocations.map(loc =>
+        `<option value="${loc.id}">${loc.name}</option>`
+      ).join('');
+  }
+}
+
+// Check if current location exists in saved locations
+function isCurrentLocationSaved() {
+  if (!currentLocation || selectedLocationId) return false;
+
+  return savedLocations.some(loc =>
+    Math.abs(loc.latitude - currentLocation.latitude) < 0.0001 &&
+    Math.abs(loc.longitude - currentLocation.longitude) < 0.0001
+  );
+}
+
+// Show/Hide Save and Delete Buttons
+function updateLocationButtons() {
+  const btnSaveLocation = document.getElementById('btnSaveLocation');
+  const btnDeleteLocation = document.getElementById('btnDeleteLocation');
+
+  if (!btnSaveLocation || !btnDeleteLocation) return;
+
+  // Show save button if current location is not in saved list and no location is selected
+  btnSaveLocation.style.display = (!isCurrentLocationSaved() && !selectedLocationId) ? 'inline-flex' : 'none';
+
+  // Show delete button if a saved location is selected
+  btnDeleteLocation.style.display = selectedLocationId ? 'inline-flex' : 'none';
+}
+
+// Save Current Location to Saved Locations
+async function saveCurrentLocationToSaved() {
+  const locationName = prompt('请输入地点名称:', '我的观测点');
+  if (!locationName || locationName.trim() === '') {
+    return;
+  }
+
+  const newLocation = addSavedLocation({
+    name: locationName.trim(),
+    latitude: currentLocation.latitude,
+    longitude: currentLocation.longitude,
+    timezone: currentLocation.timezone || 'Asia/Shanghai'
+  });
+
+  if (newLocation) {
+    savedLocations = getSavedLocations();
+    updateLocationSelect();
+    updateLocationButtons();
+    alert(`已保存地点: ${newLocation.name}`);
+  } else {
+    alert('保存失败，请重试');
+  }
+}
+
+// Handle Location Selection Change
+function handleLocationSelectChange(e) {
+  selectedLocationId = e.target.value || null;
+
+  if (selectedLocationId) {
+    // Load selected location
+    const location = savedLocations.find(loc => loc.id === selectedLocationId);
+    if (location) {
+      currentLocation = {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        timezone: location.timezone
+      };
+
+      // Update UI
+      document.getElementById('inputLat').value = location.latitude.toFixed(6);
+      document.getElementById('inputLng').value = location.longitude.toFixed(6);
+
+      const locationText = document.querySelector('.location-text');
+      if (locationText) {
+        locationText.textContent = location.name;
+      }
+
+      // Reload recommendations with new location
+      loadRecommendations('tonight-golden');
+    }
+  }
+
+  updateLocationButtons();
+}
+
+// Delete Selected Location
+function deleteSelectedLocation() {
+  if (!selectedLocationId) return;
+
+  const location = savedLocations.find(loc => loc.id === selectedLocationId);
+  if (!location) return;
+
+  if (confirm(`确定要删除地点 "${location.name}" 吗?`)) {
+    const success = deleteSavedLocation(selectedLocationId);
+    if (success) {
+      savedLocations = getSavedLocations();
+      selectedLocationId = null;
+      updateLocationSelect();
+      updateLocationButtons();
+      alert('地点已删除');
+    } else {
+      alert('删除失败，请重试');
+    }
+  }
+}
+
+// Handle Manual Location Input
+function handleLocationInput() {
+  const inputLat = document.getElementById('inputLat');
+  const inputLng = document.getElementById('inputLng');
+
+  if (!inputLat || !inputLng) return;
+
+  const lat = parseFloat(inputLat.value);
+  const lng = parseFloat(inputLng.value);
+
+  // Validate input
+  if (isNaN(lat) || isNaN(lng) ||
+      lat < -90 || lat > 90 ||
+      lng < -180 || lng > 180) {
+    return; // Invalid input, don't update
+  }
+
+  // Update current location with manual input
+  currentLocation = {
+    latitude: lat,
+    longitude: lng,
+    timezone: currentLocation?.timezone || 'Asia/Shanghai'
+  };
+
+  // Clear selected location when manually inputting
+  if (selectedLocationId) {
+    selectedLocationId = null;
+    const selectLocation = document.getElementById('selectLocation');
+    if (selectLocation) {
+      selectLocation.value = '';
+    }
+  }
+
+  // Update location text to show manual input
+  const locationText = document.querySelector('.location-text');
+  if (locationText) {
+    locationText.textContent = '手动输入';
+  }
+
+  // Update save/delete buttons
+  updateLocationButtons();
+
+  console.log('Location manually updated:', { lat, lng });
 }
 
 // Initialize Date Picker
@@ -99,6 +295,7 @@ function updateSkyMapTargets(recommendations) {
 
   const targets = recommendations.map(rec => ({
     id: rec.target.id,
+    name: rec.target.name,
     type: rec.target.type,
     azimuth: rec.current_position.azimuth,
     altitude: rec.current_position.altitude
@@ -124,6 +321,7 @@ async function loadSkyMapData() {
     if (skyMap && data.targets) {
       const targets = data.targets.map(t => ({
         id: t.id,
+        name: t.name,
         type: t.type,
         azimuth: t.azimuth,
         altitude: t.altitude
@@ -456,6 +654,13 @@ function setupEventListeners() {
           document.getElementById('inputLat').value = latitude.toFixed(6);
           document.getElementById('inputLng').value = longitude.toFixed(6);
 
+          // Clear selected location when using auto-location
+          selectedLocationId = null;
+          document.getElementById('selectLocation').value = '';
+
+          // Update save/delete buttons
+          updateLocationButtons();
+
           console.log('Browser geolocation successful:', { latitude, longitude });
         } else {
           // Fallback to backend mock location
@@ -538,25 +743,43 @@ function setupEventListeners() {
     inputFocal.addEventListener('input', debounce(calculateFOVFromInput, 500));
   }
 
-  // Timeline bar
-  const timelineBar = document.querySelector('.timeline-bar');
-  if (timelineBar) {
-    let isDragging = false;
+  // Location input fields - handle manual input
+  const inputLat = document.getElementById('inputLat');
+  const inputLng = document.getElementById('inputLng');
 
-    timelineBar.addEventListener('mousedown', (e) => {
-      isDragging = true;
-      updateTimelineFromEvent(e);
-    });
+  if (inputLat) {
+    inputLat.addEventListener('input', debounce(handleLocationInput, 300));
+  }
 
-    document.addEventListener('mousemove', (e) => {
-      if (isDragging) {
-        updateTimelineFromEvent(e);
-      }
-    });
+  if (inputLng) {
+    inputLng.addEventListener('input', debounce(handleLocationInput, 300));
+  }
 
-    document.addEventListener('mouseup', () => {
-      isDragging = false;
+  // Timeline slider
+  const timelineSlider = document.getElementById('timelineSlider');
+  if (timelineSlider) {
+    // 监听滑块input事件
+    timelineSlider.addEventListener('input', (e) => {
+      updateTimelineFromSlider(e.target.value);
     });
+  }
+
+  // Saved location select
+  const selectLocation = document.getElementById('selectLocation');
+  if (selectLocation) {
+    selectLocation.addEventListener('change', handleLocationSelectChange);
+  }
+
+  // Save location button
+  const btnSaveLocation = document.getElementById('btnSaveLocation');
+  if (btnSaveLocation) {
+    btnSaveLocation.addEventListener('click', saveCurrentLocationToSaved);
+  }
+
+  // Delete location button
+  const btnDeleteLocation = document.getElementById('btnDeleteLocation');
+  if (btnDeleteLocation) {
+    btnDeleteLocation.addEventListener('click', deleteSelectedLocation);
   }
 }
 
@@ -569,12 +792,44 @@ function debounce(fn, delay) {
   };
 }
 
-// Update Timeline from Event
+// Update Timeline from Event (保留旧函数以备兼容)
 function updateTimelineFromEvent(e) {
   const timelineBar = document.querySelector('.timeline-bar');
   const rect = timelineBar.getBoundingClientRect();
   const x = e.clientX - rect.left;
   const percentage = Math.max(0, Math.min(100, (x / rect.width) * 100));
+
+  const timelineProgress = document.getElementById('timelineProgress');
+  const timelineTime = document.getElementById('timelineTime');
+  const timelineSlider = document.getElementById('timelineSlider');
+
+  if (timelineProgress) {
+    timelineProgress.style.width = `${percentage}%`;
+  }
+
+  // 同步滑块位置
+  if (timelineSlider) {
+    timelineSlider.value = percentage;
+  }
+
+  // Calculate time from percentage (20:00 - 06:00)
+  const startHour = 20;
+  const totalHours = 10;
+  const currentHour = startHour + (percentage / 100) * totalHours;
+  const hour = Math.floor(currentHour) % 24;
+  const minute = Math.floor((currentHour % 1) * 60);
+
+  if (timelineTime) {
+    timelineTime.textContent = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+  }
+
+  // Update sky map with new time
+  updateSkyMapForTime(hour, minute);
+}
+
+// Update Timeline from Slider
+function updateTimelineFromSlider(sliderValue) {
+  const percentage = parseFloat(sliderValue);
 
   const timelineProgress = document.getElementById('timelineProgress');
   const timelineTime = document.getElementById('timelineTime');
@@ -593,6 +848,49 @@ function updateTimelineFromEvent(e) {
   if (timelineTime) {
     timelineTime.textContent = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
   }
+
+  // Update sky map with new time
+  updateSkyMapForTime(hour, minute);
+}
+
+// Update Sky Map for specific time
+let updateSkyMapTimeout = null;
+function updateSkyMapForTime(hour, minute) {
+  // Clear previous timeout
+  if (updateSkyMapTimeout) {
+    clearTimeout(updateSkyMapTimeout);
+  }
+
+  // Debounce the update to avoid too many API calls
+  updateSkyMapTimeout = setTimeout(async () => {
+    try {
+      // Create timestamp for selected date at specified time
+      const timestamp = new Date(selectedDate);
+      timestamp.setHours(hour, minute, 0, 0);
+
+      // Get sky map data for new time
+      const data = await API.getSkyMapData({
+        location: currentLocation,
+        timestamp: timestamp.toISOString(),
+        include_targets: true,
+        target_types: ['emission-nebula', 'galaxy', 'cluster', 'planetary-nebula']
+      });
+
+      if (skyMap && data.targets) {
+        const targets = data.targets.map(t => ({
+          id: t.id,
+          name: t.name,
+          type: t.type,
+          azimuth: t.azimuth,
+          altitude: t.altitude
+        }));
+
+        skyMap.updateData({ targets });
+      }
+    } catch (error) {
+      console.error('Failed to update sky map for time:', error);
+    }
+  }, 100); // 100ms debounce
 }
 
 // Start Clock

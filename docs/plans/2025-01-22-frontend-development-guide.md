@@ -310,12 +310,69 @@ App
 
 **功能**:
 - 位置设置（自动/手动）
+  - 自动定位：使用浏览器 Geolocation API 获取真实位置
+  - 手动输入：经纬度输入框
+  - 常用地点管理（使用 localStorage 本地存储）
+    - 默认为空列表
+    - 定位后可以添加到常用地点
+    - 支持自定义名称
+    - 从常用地点选择加载
+    - 删除已保存的地点
+    - 数据持久化在浏览器本地，不依赖服务器
 - 设备配置（预设/自定义）
   - 预设切换时自动更新传感器尺寸、焦距和 FOV
   - "自定义"预设下可手动输入传感器尺寸和焦距
   - 非自定义预设下输入框禁用（只读）
   - 输入变化时自动计算 FOV
 - 可视区域管理
+
+**本地存储策略**:
+
+```javascript
+// 使用 localStorage 存储用户配置
+const STORAGE_KEYS = {
+  SAVED_LOCATIONS: 'skywatcher_saved_locations',  // 常用地点列表
+  CURRENT_LOCATION: 'skywatcher_current_location', // 当前位置
+  SELECTED_EQUIPMENT: 'skywatcher_equipment',      // 设备配置
+  SELECTED_DATE: 'skywatcher_date'                 // 选择的日期
+};
+
+// 数据结构
+{
+  savedLocations: [
+    {
+      id: 'loc-1',
+      name: '家',
+      latitude: 39.9042,
+      longitude: 116.4074,
+      timezone: 'Asia/Shanghai',
+      createdAt: '2025-01-22T10:30:00Z'
+    },
+    {
+      id: 'loc-2',
+      name: '云南天文台',
+      latitude: 25.0339,
+      longitude: 102.7895,
+      timezone: 'Asia/Shanghai',
+      createdAt: '2025-01-22T11:00:00Z'
+    }
+  ]
+}
+```
+
+**UI 交互流程**:
+
+1. **初始状态**: 常用地点下拉框显示"常用地点 (0)"
+2. **定位后**:
+   - 显示"保存到常用地点"按钮
+   - 点击按钮弹出名称输入框
+   - 保存后更新下拉框
+3. **选择地点**:
+   - 从下拉框选择已保存的地点
+   - 自动填充经纬度并更新推荐
+4. **删除地点**:
+   - 选中地点后显示删除按钮
+   - 确认后从列表中移除
 
 **尺寸**:
 - 桌面端: 宽度 `320px`，可折叠
