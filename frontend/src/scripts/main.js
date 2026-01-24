@@ -11,7 +11,12 @@ import {
   getSavedEquipment,
   saveEquipment,
   getSavedDate,
-  saveDate
+  saveDate,
+  getVisibleZones,
+  addRectZone,
+  deleteVisibleZone,
+  getFOVFramePosition,
+  saveFOVFramePosition
 } from './utils/storage.js';
 
 // App State
@@ -67,6 +72,13 @@ function initApp() {
 
   // Load initial recommendations
   loadRecommendations('tonight-golden');
+
+  // Initialize visible zones
+  renderZonesList();
+  loadZonesToCanvas();
+
+  // Initialize FOV frame
+  initFOVFrame();
 
   // Load equipment presets
   loadEquipmentPresets();
@@ -419,6 +431,14 @@ async function handleEquipmentPresetChange(e) {
 
     updateFOVDisplay();
 
+    // Update FOV frame size
+    if (skyMap) {
+      skyMap.updateFOVFrameSize(
+        currentEquipment.fov_horizontal,
+        currentEquipment.fov_vertical
+      );
+    }
+
     // Reload recommendations with new equipment
     loadRecommendations('tonight-golden');
   }
@@ -467,6 +487,14 @@ async function calculateFOVFromInput() {
       };
       updateFOVDisplay();
 
+      // Update FOV frame size
+      if (skyMap) {
+        skyMap.updateFOVFrameSize(
+          currentEquipment.fov_horizontal,
+          currentEquipment.fov_vertical
+        );
+      }
+
       // Reload recommendations with new equipment
       loadRecommendations('tonight-golden');
     } catch (error) {
@@ -494,18 +522,25 @@ async function loadRecommendations(period) {
   try {
     // Use selected date instead of current date
     const selectedDateStr = formatDateForInput(selectedDate);
+
+    // Load visible zones from localStorage and convert to polygon format
+    const visibleZones = getVisibleZones().map(zone => ({
+      id: zone.id,
+      name: zone.name,
+      polygon: [
+        zone.start,
+        [zone.end[0], zone.start[1]],
+        zone.end,
+        [zone.start[0], zone.end[1]]
+      ],
+      priority: zone.priority
+    }));
+
     const data = await API.getRecommendations({
       location: currentLocation,
       date: selectedDateStr,
       equipment: currentEquipment,
-      visible_zones: [
-        {
-          id: 'all_sky',
-          name: '全天空',
-          polygon: [[0, 15], [90, 15], [180, 15], [270, 15], [359, 15], [359, 90], [270, 90], [180, 90], [90, 90], [0, 90]],
-          priority: 1
-        }
-      ],
+      visible_zones: visibleZones,
       filters: {
         min_magnitude: 9
       },
@@ -593,6 +628,12 @@ function getTypeLabel(type) {
 
 // Setup Event Listeners
 function setupEventListeners() {
+  // Add zone button
+  const btnAddZone = document.getElementById('btnAddZone');
+  if (btnAddZone) {
+    btnAddZone.addEventListener('click', addNewZone);
+  }
+
   // Time filter buttons
   document.querySelectorAll('.filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -891,6 +932,23 @@ function updateSkyMapForTime(hour, minute) {
       console.error('Failed to update sky map for time:', error);
     }
   }, 100); // 100ms debounce
+
+  // FOV 框开关
+  const chkShowFOV = document.getElementById('chkShowFOV');
+  if (chkShowFOV) {
+    chkShowFOV.addEventListener('change', (e) => {
+      skyMap?.setFOVFrameVisible(e.target.checked);
+    });
+  }
+
+  // 重置 FOV 位置
+  const btnResetFOV = document.getElementById('btnResetFOV');
+  if (btnResetFOV) {
+    btnResetFOV.addEventListener('click', () => {
+      skyMap?.setFOVFrameCenter(180, 45);
+      saveFOVFramePosition({ azimuth: 180, altitude: 45 });
+    });
+  }
 }
 
 // Start Clock
@@ -914,6 +972,149 @@ function updateDateTime() {
 
     datetimeInfo.textContent = `${year}-${month}-${day} ${hour}:${minute}:${second}`;
   }
+}
+
+// ========== 可视区域管理 ==========
+
+/**
+ * 渲染可视区域列表
+ */
+function renderZonesList() {
+  const zonesList = document.getElementById('zonesList');
+  if (!zonesList) return;
+
+  const zones = getVisibleZones();
+
+  zonesList.innerHTML = zones.map(zone => {
+    const [startAz, startAlt] = zone.start;
+    const [endAz, endAlt] = zone.end;
+    const rangeText = `Az: ${startAz}°-${endAz}°, Alt: ${startAlt}°-${endAlt}°`;
+
+    return `
+      <div class="zone-item ${zone.isDefault ? 'default' : ''}" data-zone-id="${zone.id}">
+        <div class="zone-info">
+          <div class="zone-name">${zone.name}</div>
+          <div class="zone-range">${rangeText}</div>
+        </div>
+        <button class="zone-delete ${zone.isDefault ? 'default' : ''}"
+                data-zone-id="${zone.id}"
+                title="删除区域">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+          </svg>
+        </button>
+      </div>
+    `;
+  }).join('');
+
+  // 绑定删除按钮事件
+  zonesList.querySelectorAll('.zone-delete').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const zoneId = e.currentTarget.dataset.zoneId;
+      if (zoneId && confirm('确定要删除这个区域吗？')) {
+        deleteVisibleZone(zoneId);
+        renderZonesList();
+        loadZonesToCanvas();
+        loadRecommendations('tonight-golden');
+      }
+    });
+  });
+}
+
+/**
+ * 添加新区域
+ */
+function addNewZone() {
+  const startAz = parseFloat(document.getElementById('zoneStartAz').value);
+  const startAlt = parseFloat(document.getElementById('zoneStartAlt').value);
+  const endAz = parseFloat(document.getElementById('zoneEndAz').value);
+  const endAlt = parseFloat(document.getElementById('zoneEndAlt').value);
+  const name = document.getElementById('zoneName').value.trim();
+
+  // 验证输入
+  if (isNaN(startAz) || isNaN(startAlt) || isNaN(endAz) || isNaN(endAlt)) {
+    alert('请输入有效的坐标值');
+    return;
+  }
+
+  if (startAz >= endAz || startAlt >= endAlt) {
+    alert('起始值必须小于结束值');
+    return;
+  }
+
+  if (!name) {
+    alert('请输入区域名称');
+    return;
+  }
+
+  // 添加区域
+  const zone = addRectZone(name, startAz, startAlt, endAz, endAlt);
+
+  if (zone) {
+    // 清空表单
+    document.getElementById('zoneName').value = '';
+
+    // 刷新列表
+    renderZonesList();
+
+    // 更新Canvas
+    loadZonesToCanvas();
+
+    // 刷新推荐
+    loadRecommendations('tonight-golden');
+
+    alert(`区域 "${name}" 已添加`);
+  } else {
+    alert('添加区域失败，请重试');
+  }
+}
+
+/**
+ * 加载可视区域到Canvas
+ */
+function loadZonesToCanvas() {
+  if (!skyMap) return;
+
+  const zones = getVisibleZones();
+  skyMap.updateData({ zones });
+  skyMap.render();
+}
+
+/**
+ * 初始化 FOV 框
+ */
+function initFOVFrame() {
+  if (!skyMap) return;
+
+  // 加载保存的位置
+  const savedPos = getFOVFramePosition();
+  skyMap.setFOVFrameCenter(savedPos.azimuth, savedPos.altitude);
+
+  // 设置当前 FOV 大小
+  if (currentEquipment && currentEquipment.fov_horizontal) {
+    skyMap.updateFOVFrameSize(
+      currentEquipment.fov_horizontal,
+      currentEquipment.fov_vertical
+    );
+  }
+
+  // 防抖函数
+  const debounce = (fn, delay) => {
+    let timeoutId;
+    return (...args) => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => fn(...args), delay);
+    };
+  };
+
+  // 绑定移动事件（保存位置）
+  skyMap.onFOVFrameMove = debounce((center) => {
+    saveFOVFramePosition(center);
+  }, 500);
+
+  skyMap.onFOVFrameChange = (center) => {
+    saveFOVFramePosition(center);
+  };
 }
 
 // Initialize on DOM ready

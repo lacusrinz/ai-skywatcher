@@ -8,7 +8,9 @@ export const STORAGE_KEYS = {
   SAVED_LOCATIONS: 'skywatcher_saved_locations',   // 常用地点列表
   CURRENT_LOCATION: 'skywatcher_current_location', // 当前位置
   SELECTED_EQUIPMENT: 'skywatcher_equipment',      // 设备配置
-  SELECTED_DATE: 'skywatcher_date'                 // 选择的日期
+  SELECTED_DATE: 'skywatcher_date',               // 选择的日期
+  VISIBLE_ZONES: 'skywatcher_visible_zones',      // 可视区域列表
+  FOV_FRAME_POSITION: 'skywatcher_fov_frame_position'  // FOV 框位置
 };
 
 /**
@@ -186,6 +188,144 @@ export function clearAllStorage() {
     return true;
   } catch (error) {
     console.error('Failed to clear storage:', error);
+    return false;
+  }
+}
+
+// ========== 可视区域管理 ==========
+
+/**
+ * 获取默认可视区域（全天空）
+ * @returns {Array} 默认区域列表
+ */
+function getDefaultZones() {
+  return [{
+    id: 'all_sky',
+    name: '全天空',
+    type: 'rectangle',
+    start: [0, 15],
+    end: [360, 90],
+    priority: 1,
+    isDefault: true
+  }];
+}
+
+/**
+ * 获取可视区域列表
+ * @returns {Array} 可视区域列表
+ */
+export function getVisibleZones() {
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.VISIBLE_ZONES);
+    return data ? JSON.parse(data) : getDefaultZones();
+  } catch (error) {
+    console.error('Failed to get visible zones:', error);
+    return getDefaultZones();
+  }
+}
+
+/**
+ * 保存可视区域列表
+ * @param {Array} zones - 可视区域列表
+ * @returns {boolean} 是否保存成功
+ */
+export function saveVisibleZones(zones) {
+  try {
+    localStorage.setItem(STORAGE_KEYS.VISIBLE_ZONES, JSON.stringify(zones));
+    return true;
+  } catch (error) {
+    console.error('Failed to save visible zones:', error);
+    return false;
+  }
+}
+
+/**
+ * 添加矩形可视区域
+ * @param {string} name - 区域名称
+ * @param {number} startAz - 起始方位角 (0-360)
+ * @param {number} startAlt - 起始高度角 (0-90)
+ * @param {number} endAz - 结束方位角 (0-360)
+ * @param {number} endAlt - 结束高度角 (0-90)
+ * @param {number} priority - 优先级 (1-10)
+ * @returns {Object|null} 添加后的区域对象，失败返回 null
+ */
+export function addRectZone(name, startAz, startAlt, endAz, endAlt, priority = 5) {
+  try {
+    const zones = getVisibleZones();
+    const id = `zone-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    const newZone = {
+      id,
+      name: name || '未命名区域',
+      type: 'rectangle',
+      start: [startAz, startAlt],
+      end: [endAz, endAlt],
+      priority,
+      createdAt: new Date().toISOString()
+    };
+
+    zones.push(newZone);
+    saveVisibleZones(zones);
+
+    return newZone;
+  } catch (error) {
+    console.error('Failed to add zone:', error);
+    return null;
+  }
+}
+
+/**
+ * 删除可视区域
+ * @param {string} zoneId - 区域 ID
+ * @returns {boolean} 是否删除成功
+ */
+export function deleteVisibleZone(zoneId) {
+  try {
+    const zones = getVisibleZones();
+
+    // 不允许删除默认区域
+    const zone = zones.find(z => z.id === zoneId);
+    if (zone?.isDefault) {
+      console.warn('Cannot delete default zone');
+      return false;
+    }
+
+    const filtered = zones.filter(z => z.id !== zoneId);
+    saveVisibleZones(filtered);
+    return true;
+  } catch (error) {
+    console.error('Failed to delete zone:', error);
+    return false;
+  }
+}
+
+// ========== FOV 框位置管理 ==========
+
+/**
+ * 获取 FOV 框位置
+ * @returns {Object} FOV 框中心位置 {azimuth, altitude}
+ */
+export function getFOVFramePosition() {
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.FOV_FRAME_POSITION);
+    return data ? JSON.parse(data) : { azimuth: 180, altitude: 45 };
+  } catch (error) {
+    console.error('Failed to get FOV frame position:', error);
+    return { azimuth: 180, altitude: 45 };
+  }
+}
+
+/**
+ * 保存 FOV 框位置
+ * @param {Object} position - FOV 框中心位置 {azimuth, altitude}
+ * @returns {boolean} 是否保存成功
+ */
+export function saveFOVFramePosition(position) {
+  try {
+    localStorage.setItem(STORAGE_KEYS.FOV_FRAME_POSITION, JSON.stringify(position));
+    return true;
+  } catch (error) {
+    console.error('Failed to save FOV frame position:', error);
     return false;
   }
 }

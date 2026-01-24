@@ -199,6 +199,94 @@
   border-color: var(--accent-error);
 }
 
+/* Zones List & Form */
+.zones-list {
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: var(--spacing-4);
+}
+
+.zone-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-3);
+  background-color: var(--bg-elevated);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-2);
+  border: 1px solid var(--border-primary);
+  transition: all var(--transition-base);
+}
+
+.zone-item.default {
+  border-color: var(--border-secondary);
+  opacity: 0.7;
+}
+
+.zone-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.zone-name {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+  margin-bottom: var(--spacing-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.zone-range {
+  font-size: var(--font-size-xs);
+  color: var(--text-hint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.zone-delete {
+  background: none;
+  border: none;
+  color: var(--text-hint);
+  cursor: pointer;
+  padding: var(--spacing-1);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-base);
+  flex-shrink: 0;
+}
+
+.zone-delete:hover {
+  color: var(--color-danger);
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+.zone-delete.default {
+  display: none; /* 默认区域不可删除 */
+}
+
+.zone-form {
+  padding: var(--spacing-4);
+  background-color: var(--bg-tertiary);
+  border-radius: var(--radius-lg);
+}
+
+.zone-form h3 {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  margin-bottom: var(--spacing-4);
+}
+
+.btn-block {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-2);
+}
+
 /* Target Cards */
 .target-card {
   background-color: var(--bg-tertiary);
@@ -563,4 +651,29 @@
 .btn-auto-location:disabled {
   opacity: 0.7;
   cursor: not-allowed;
+}
+
+/* FOV Controls */
+.fov-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: var(--spacing-2) var(--spacing-4);
+  border-top: 1px solid var(--border-primary);
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.checkbox-label input[type="checkbox"] {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
 }

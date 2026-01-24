@@ -34,7 +34,14 @@ export class SkyMapCanvas {
       hoveredTarget: null,
       isDragging: false,
       lastMouseX: 0,
-      lastMouseY: 0
+      lastMouseY: 0,
+      // FOV 框状态
+      fovFrame: {
+        center: { azimuth: 180, altitude: 45 },
+        isVisible: true,
+        isSelected: false,
+        isDragging: false
+      }
     };
 
     this.init();
@@ -55,6 +62,23 @@ export class SkyMapCanvas {
   bindEvents() {
     // 鼠标拖动控制视角（原地转头）
     this.canvas.addEventListener('mousedown', (e) => {
+      const rect = this.canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // 优先检测是否点击在 FOV 框上
+      if (this.isPointInFOVFrame(x, y)) {
+        this.state.fovFrame.isDragging = true;
+        this.state.fovFrame.isSelected = true;
+        this.state.isDragging = true;
+        this.state.lastMouseX = e.clientX;
+        this.state.lastMouseY = e.clientY;
+        this.canvas.style.cursor = 'grabbing';
+        this.render();
+        return;
+      }
+
+      // 原有的视角拖动逻辑
       this.state.isDragging = true;
       this.state.lastMouseX = e.clientX;
       this.state.lastMouseY = e.clientY;
@@ -62,6 +86,28 @@ export class SkyMapCanvas {
     });
 
     document.addEventListener('mousemove', (e) => {
+      // FOV 框拖动优先
+      if (this.state.fovFrame.isDragging) {
+        const deltaX = e.clientX - this.state.lastMouseX;
+        const deltaY = e.clientY - this.state.lastMouseY;
+
+        // 灵敏度：1 像素 ≈ 0.1 度
+        const sensitivity = 0.1;
+        this.state.fovFrame.center.azimuth =
+          (this.state.fovFrame.center.azimuth - deltaX * sensitivity + 360) % 360;
+        this.state.fovFrame.center.altitude = Math.max(0, Math.min(90,
+          this.state.fovFrame.center.altitude + deltaY * sensitivity
+        ));
+
+        this.state.lastMouseX = e.clientX;
+        this.state.lastMouseY = e.clientY;
+
+        this.render();
+        this.onFOVFrameMove?.(this.state.fovFrame.center);
+        return;
+      }
+
+      // 原有的视角拖动逻辑
       if (this.state.isDragging) {
         const deltaX = e.clientX - this.state.lastMouseX;
         const deltaY = e.clientY - this.state.lastMouseY;
@@ -78,23 +124,43 @@ export class SkyMapCanvas {
     });
 
     document.addEventListener('mouseup', () => {
+      if (this.state.fovFrame.isDragging) {
+        this.state.fovFrame.isDragging = false;
+        this.canvas.style.cursor = 'grab';
+        this.onFOVFrameChange?.(this.state.fovFrame.center);
+      }
       this.state.isDragging = false;
       this.canvas.style.cursor = 'grab';
     });
 
     // 悬停检测
     this.canvas.addEventListener('mousemove', (e) => {
-      if (!this.state.isDragging) {
+      if (!this.state.isDragging && !this.state.fovFrame.isDragging) {
         const rect = this.canvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
-        this.handleHover(x, y);
+
+        // 检测 FOV 框悬停
+        if (this.isPointInFOVFrame(x, y)) {
+          this.canvas.style.cursor = 'grab';
+          // 高亮效果
+          if (!this.state.fovFrame.isSelected) {
+            this.state.fovFrame.isSelected = true;
+            this.render();
+          }
+        } else {
+          if (this.state.fovFrame.isSelected) {
+            this.state.fovFrame.isSelected = false;
+            this.render();
+          }
+          this.handleHover(x, y);
+        }
       }
     });
 
     // 点击选择
     this.canvas.addEventListener('click', (e) => {
-      if (this.state.hoveredTarget && !this.state.isDragging) {
+      if (this.state.hoveredTarget && !this.state.isDragging && !this.state.fovFrame.isDragging) {
         this.onTargetSelect?.(this.state.hoveredTarget);
       }
     });
@@ -180,6 +246,8 @@ export class SkyMapCanvas {
     this.drawCelestialSphere();
     this.drawGrid();
     this.drawHorizon();
+    this.drawVisibleZones();  // 绘制可视区域
+    this.drawFOVFrame();      // 绘制 FOV 框
     this.drawTargets();
     this.drawCompass();
   }
@@ -491,6 +559,40 @@ export class SkyMapCanvas {
   }
 
   /**
+   * 设置 FOV 框中心位置
+   * @param {number} azimuth - 方位角（度）
+   * @param {number} altitude - 高度角（度）
+   */
+  setFOVFrameCenter(azimuth, altitude) {
+    this.state.fovFrame.center = {
+      azimuth: (azimuth + 360) % 360,
+      altitude: Math.max(0, Math.min(90, altitude))
+    };
+    this.render();
+  }
+
+  /**
+   * 设置 FOV 框可见性
+   * @param {boolean} visible - 是否可见
+   */
+  setFOVFrameVisible(visible) {
+    this.state.fovFrame.isVisible = visible;
+    this.render();
+  }
+
+  /**
+   * 更新 FOV 框大小（设备变化时调用）
+   * @param {number} fovH - 水平视野角（度）
+   * @param {number} fovV - 垂直视野角（度）
+   */
+  updateFOVFrameSize(fovH, fovV) {
+    // 保存到 config 中供绘制使用
+    this.config.fovHorizontal = fovH;
+    this.config.fovVertical = fovV;
+    this.render();
+  }
+
+  /**
    * 设置视角（原地转头）
    * @param {number} azimuth - 方位角（度）
    * @param {number} altitude - 高度角（度）
@@ -509,5 +611,223 @@ export class SkyMapCanvas {
     this.view.altitude = 0;  // 平视地平线
     this.view.zoom = 1.0;
     this.render();
+  }
+
+  /**
+   * 绘制可视区域
+   */
+  drawVisibleZones() {
+    const { ctx } = this;
+
+    if (!this.state.zones || this.state.zones.length === 0) return;
+
+    this.state.zones.forEach(zone => {
+      if (zone.type === 'rectangle') {
+        this.drawRectZone(zone);
+      }
+    });
+  }
+
+  /**
+   * 绘制矩形区域
+   * @param {Object} zone - 区域对象 {id, name, type, start, end, isDefault}
+   */
+  drawRectZone(zone) {
+    const { ctx } = this;
+    const [startAz, startAlt] = zone.start;
+    const [endAz, endAlt] = zone.end;
+
+    // 矩形的四个顶点
+    const corners = [
+      [startAz, startAlt],  // 左下
+      [endAz, startAlt],    // 右下
+      [endAz, endAlt],      // 右上
+      [startAz, endAlt]     // 左上
+    ];
+
+    // 投影到屏幕坐标
+    const projected = corners.map(([az, alt]) =>
+      this.projectFromCenter(az, alt)
+    );
+
+    // 过滤不可见顶点
+    const visible = projected.filter(p => p.visible);
+    if (visible.length < 2) return;
+
+    // 绘制半透明填充
+    ctx.beginPath();
+    ctx.moveTo(visible[0].x, visible[0].y);
+    for (let i = 1; i < visible.length; i++) {
+      ctx.lineTo(visible[i].x, visible[i].y);
+    }
+    ctx.closePath();
+
+    ctx.fillStyle = zone.isDefault
+      ? 'rgba(100, 116, 139, 0.1)'
+      : 'rgba(239, 68, 68, 0.15)';
+    ctx.fill();
+
+    // 绘制边框
+    ctx.strokeStyle = zone.isDefault
+      ? 'rgba(148, 163, 184, 0.3)'
+      : 'rgba(239, 68, 68, 0.5)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 5]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 绘制区域名称
+    if (!zone.isDefault) {
+      const center = this.projectFromCenter(
+        (startAz + endAz) / 2,
+        (startAlt + endAlt) / 2
+      );
+
+      if (center.visible) {
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.8)';
+        ctx.font = '11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(zone.name, center.x, center.y);
+      }
+    }
+  }
+
+  /**
+   * 绘制 FOV 框
+   */
+  drawFOVFrame() {
+    const { ctx } = this;
+    const { fovFrame } = this.state;
+
+    // 不显示或没有 FOV 数据时跳过
+    if (!fovFrame.isVisible || !this.config.fovHorizontal) return;
+
+    const { center } = fovFrame;
+    const fovH = this.config.fovHorizontal / 2;  // 半宽
+    const fovV = this.config.fovVertical / 2;    // 半高
+
+    // 计算矩形四个角（相对于中心）
+    const corners = [
+      [center.azimuth - fovH, center.altitude - fovV],  // 左下
+      [center.azimuth + fovH, center.altitude - fovV],  // 右下
+      [center.azimuth + fovH, center.altitude + fovV],  // 右上
+      [center.azimuth - fovH, center.altitude + fovV]   // 左上
+    ];
+
+    // 处理方位角跨越 0/360 度的情况
+    const normalizedCorners = corners.map(([az, alt]) => [
+      ((az % 360) + 360) % 360,
+      Math.max(0, alt)
+    ]);
+
+    // 投影到屏幕坐标
+    const projected = normalizedCorners.map(([az, alt]) =>
+      this.projectFromCenter(az, alt)
+    );
+
+    // 过滤不可见顶点
+    const visible = projected.filter(p => p.visible);
+    if (visible.length < 3) return;
+
+    // 绘制半透明填充
+    ctx.beginPath();
+    ctx.moveTo(visible[0].x, visible[0].y);
+    for (let i = 1; i < visible.length; i++) {
+      ctx.lineTo(visible[i].x, visible[i].y);
+    }
+    ctx.closePath();
+
+    // 选中状态更亮
+    if (fovFrame.isSelected) {
+      ctx.fillStyle = 'rgba(59, 130, 246, 0.3)';
+      ctx.strokeStyle = 'rgba(59, 130, 246, 0.9)';
+      ctx.lineWidth = 3;
+    } else {
+      ctx.fillStyle = 'rgba(59, 130, 246, 0.15)';
+      ctx.strokeStyle = 'rgba(59, 130, 246, 0.6)';
+      ctx.lineWidth = 2;
+    }
+
+    ctx.fill();
+    ctx.stroke();
+
+    // 绘制中心点
+    const centerPos = this.projectFromCenter(center.azimuth, center.altitude);
+    if (centerPos.visible) {
+      // 中心点标记
+      ctx.beginPath();
+      ctx.arc(centerPos.x, centerPos.y, 6, 0, Math.PI * 2);
+      ctx.fillStyle = fovFrame.isSelected ? '#FFFFFF' : 'rgba(255, 255, 255, 0.8)';
+      ctx.fill();
+
+      // 中心十字
+      ctx.beginPath();
+      ctx.moveTo(centerPos.x - 4, centerPos.y);
+      ctx.lineTo(centerPos.x + 4, centerPos.y);
+      ctx.moveTo(centerPos.x, centerPos.y - 4);
+      ctx.lineTo(centerPos.x, centerPos.y + 4);
+      ctx.strokeStyle = '#3B82F6';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // 显示坐标信息
+      if (fovFrame.isSelected || fovFrame.isDragging) {
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(
+          `FOV: ${this.config.fovHorizontal.toFixed(1)}° × ${this.config.fovVertical.toFixed(1)}°`,
+          centerPos.x,
+          centerPos.y - 12
+        );
+
+        ctx.font = '11px sans-serif';
+        ctx.textBaseline = 'top';
+        ctx.fillText(
+          `${center.altitude.toFixed(1)}° ${center.azimuth.toFixed(1)}°`,
+          centerPos.x,
+          centerPos.y + 12
+        );
+      }
+    }
+  }
+
+  /**
+   * 检测点是否在 FOV 框内
+   * @param {number} x - 屏幕坐标 X
+   * @param {number} y - 屏幕坐标 Y
+   * @returns {boolean}
+   */
+  isPointInFOVFrame(x, y) {
+    const { fovFrame } = this.state;
+    if (!fovFrame.isVisible || !this.config.fovHorizontal) return false;
+
+    const { center } = fovFrame;
+    const fovH = this.config.fovHorizontal / 2;
+    const fovV = this.config.fovVertical / 2;
+
+    // 计算矩形边界
+    const minAz = ((center.azimuth - fovH) % 360 + 360) % 360;
+    const maxAz = ((center.azimuth + fovH) % 360 + 360) % 360;
+    const minAlt = Math.max(0, center.altitude - fovV);
+    const maxAlt = Math.min(90, center.altitude + fovV);
+
+    // 采样检测：在矩形内采样多个点，检测屏幕坐标
+    const samples = 9;
+    for (let i = 0; i < samples; i++) {
+      for (let j = 0; j < samples; j++) {
+        const az = minAz + (maxAz - minAz) * (i / (samples - 1));
+        const alt = minAlt + (maxAlt - minAlt) * (j / (samples - 1));
+        const pos = this.projectFromCenter(az, alt);
+
+        if (pos.visible) {
+          const dist = Math.sqrt(Math.pow(x - pos.x, 2) + Math.pow(y - pos.y, 2));
+          if (dist < 15) return true;  // 阈值 15 像素
+        }
+      }
+    }
+
+    return false;
   }
 }

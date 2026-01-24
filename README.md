@@ -5,7 +5,7 @@
 [![Frontend Status](https://img.shields.io/badge/frontend-✅%20成功-green)
 ![Backend Status](https://img.shields.io/badge/backend-✅%20成功-blue)
 ![Integration](https://img.shields.io/badge/integration-✅%20完成-success)
-![Version](https://img.shields.io/badge/version-1.2.0-orange)
+![Version](https://img.shields.io/badge/version-2.4.0-orange)
 
 ---
 
@@ -16,12 +16,14 @@ AI Skywatcher 是一个专为天文摄影师设计的智能深空拍摄目标推
 **✨ 核心特性**:
 - 🌍 **智能定位**: 支持真实浏览器 GPS 定位和手动设置观测地点
 - 🔭 **设备配置**: 预设常见设备组合，自定义传感器和焦距参数，实时 FOV 计算
+- 📐 **FOV 视野框**: 可视化设备视野范围，支持拖动定位，实时反馈拍摄构图
 - 🗓️ **日期规划**: 选择任意日期评估未来观测目标，智能推荐时段
-- 🎯 **可视区域**: 绘制并管理您的观测可视区域
-- 🗺️ **交互式天空图**: 实时显示深空目标位置的 Canvas 天空图
+- 🎯 **可视区域编辑**: 矩形区域标注遮挡物，灵活管理观测范围
+- 🗺️ **交互式天空图**: 3D 天球投影，实时显示深空目标位置
 - ⭐ **智能推荐**: 基于多维度评分的拍摄目标推荐
 - ⏰ **时段筛选**: 今晚黄金、后半夜、黎明前时段推荐
 - 📱 **响应式设计**: 支持桌面、平板、移动设备
+- 💾 **本地存储**: 位置、设备、可视区域、FOV 框位置自动保存
 
 ---
 
@@ -126,10 +128,20 @@ npm run dev
 - 自定义传感器尺寸和焦距
 - 自动计算 FOV (视场角)
 
-#### 可视区域
-- 多边形绘制可视区域
-- 方位角/高度角显示
-- 优先级管理
+#### 可视区域编辑
+- 矩形区域创建（输入坐标）
+- 可视区域列表管理
+- 区域删除功能
+- 默认全天空区域
+- 与推荐引擎集成
+
+#### FOV 视野框
+- 实时显示设备视野范围
+- 拖动定位（方位角/高度角）
+- 点击高亮效果
+- 显示/隐藏切换
+- 位置重置功能
+- 自动保存位置
 
 #### 智能推荐
 - **评分算法** (100分制):
@@ -152,11 +164,11 @@ npm run dev
 ### 🔄 待开发功能
 
 - 目标详情弹窗
-- 可视区域编辑器
 - 数据持久化 (IndexedDB)
 - PWA 离线支持
 - 用户系统
 - 导出功能 (PDF/图片)
+- 多语言支持
 
 ---
 
@@ -209,59 +221,6 @@ npm run dev
 
 ---
 
-## 使用示例
-
-### 1. 获取推荐
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/recommendations" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "location": {
-      "latitude": 39.9042,
-      "longitude": 116.4074,
-      "timezone": "Asia/Shanghai"
-    },
-    "date": "2025-01-22",
-    "equipment": {
-      "fov_horizontal": 10.3,
-      "fov_vertical": 6.9
-    },
-    "visible_zones": [
-      {
-        "id": "zone_1",
-        "name": "东侧空地",
-        "polygon": [[90, 20], [120, 20], [120, 60], [90, 60]],
-        "priority": 1
-      }
-    ],
-    "limit": 20
-  }'
-```
-
-### 2. 计算目标位置
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/visibility/position" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "target_id": "M42",
-    "location": {
-      "latitude": 39.9042,
-      "longitude": 116.4074
-    },
-    "timestamp": "2025-01-22T20:30:00+08:00"
-  }'
-```
-
-### 3. 搜索目标
-
-```bash
-curl "http://localhost:8000/api/v1/targets/search?q=Orion"
-```
-
----
-
 ## 设计系统
 
 ### 颜色
@@ -281,36 +240,28 @@ curl "http://localhost:8000/api/v1/targets/search?q=Orion"
 - 基础单位: 4px
 - 系列: 4px, 8px, 12px, 16px, 20px, 24px...
 
----
-
-## 开发文档
-
-### 设计文档
-- [项目设计文档](./docs/plans/2025-01-21-deep-sky-target-recommender-design.md)
-- [前端开发指南](./docs/plans/2025-01-22-frontend-development-guide.md)
-- [后端设计文档](./docs/plans/backend-design.md)
-
-### 进展文档
-- [后端开发总结](./docs/progress/backend-implementation-summary.md)
-- [前端开发总结](./docs/progress/FRONTEND_SUMMARY.md)
-- [前后端对接总结](./docs/progress/frontend-backend-integration-summary.md)
 
 ---
 
 ## 开发进展
 
-### ✅ 已完成 (2025-01-22)
+### ✅ 已完成 (2025-01-24)
 
-#### 前端开发
+#### 前端开发 (v2.4.0)
 - ✅ 完整的 UI 界面 (HTML + CSS)
-- ✅ Canvas 交互式天空图
+- ✅ Canvas 交互式天空图（3D 天球投影）
 - ✅ 状态管理系统
 - ✅ API 接口封装
 - ✅ Mock 数据支持
 - ✅ 响应式设计
-- ✅ **真实浏览器 GPS 定位**（新增）
-- ✅ **设备预设切换功能**（新增）
-- ✅ **日期选择器**（新增）
+- ✅ 真实浏览器 GPS 定位
+- ✅ 设备预设切换功能
+- ✅ 日期选择器
+- ✅ **本地存储功能**（位置、设备、日期）
+- ✅ **时间轴交互控制**（拖动调整观测时间）
+- ✅ **3D 天球优化**（中心视角，球面投影）
+- ✅ **可视区域编辑器**（矩形区域创建与管理）
+- ✅ **FOV 视野框**（可视化设备视野，拖动定位）
 
 #### 后端开发
 - ✅ FastAPI 项目结构
@@ -331,7 +282,11 @@ curl "http://localhost:8000/api/v1/targets/search?q=Orion"
 
 **详细文档**:
 - [前后端对接总结](./docs/progress/frontend-backend-integration-summary.md)
-- **[功能增强开发总结](./docs/progress/feature-enhancement-summary.md)**（新增）
+- [功能增强开发总结](./docs/progress/feature-enhancement-summary.md)
+- [本地存储功能](./docs/progress/local-storage-feature-summary.md)
+- [时间轴交互功能](./docs/progress/timeline-interactive-feature-summary.md)
+- [3D 天球优化](./docs/progress/3d-celestial-sphere-summary.md)
+- **[FOV 视野框功能](./docs/progress/2025-01-24-fov-frame-feature.md)**（最新）
 
 ### 🚧 进行中
 
@@ -346,21 +301,6 @@ curl "http://localhost:8000/api/v1/targets/search?q=Orion"
 - [ ] 数据同步
 - [ ] PWA 支持
 - [ ] 多语言支持
-
----
-
-## 项目统计
-
-### 代码量
-- **前端**: ~2200+ 行 (HTML/CSS/JS)
-- **后端**: ~3200+ 行 (Python)
-- **API 端点**: 22+
-- **数据模型**: 20+
-
-### 文件数
-- **前端文件**: 12+
-- **后端文件**: 31+
-- **文档文件**: 11+
 
 ---
 
@@ -433,14 +373,19 @@ MIT License
 
 ---
 
-**版本**: 1.2.0
-**最后更新**: 2026-01-22
-**状态**: ✅ 功能增强完成，系统正常运行
+**版本**: 2.4.0
+**最后更新**: 2025-01-24
+**状态**: ✅ FOV 视野框功能完成，系统正常运行
 **访问地址**:
 - 前端: http://localhost:3000
 - 后端: http://localhost:8000/docs
 
 **最新功能**:
+- ✅ FOV 视野框（可视化设备视野）
+- ✅ 可视区域编辑器（矩形区域创建）
+- ✅ 3D 天球优化（中心视角投影）
+- ✅ 时间轴交互控制（拖动调整时间）
+- ✅ 本地存储功能（位置、设备、日期）
 - ✅ 真实浏览器 GPS 定位
 - ✅ 设备预设智能切换
 - ✅ 日期规划功能
