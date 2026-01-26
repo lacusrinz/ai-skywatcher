@@ -13,7 +13,13 @@
       "Bash(python:*)",
       "Bash(/bin/ls:*)",
       "Bash(python3:*)",
-      "Bash(test:*)"
+      "Bash(test:*)",
+      "Bash(chmod:*)",
+      "Bash(/usr/bin/python3:*)",
+      "WebSearch",
+      "mcp__zread__get_repo_structure",
+      "mcp__web-reader__webReader",
+      "Bash(curl:*)"
     ]
   }
 }
