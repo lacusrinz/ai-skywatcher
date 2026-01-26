@@ -1,79 +1,265 @@
-"""Targets API routes"""
+"""Targets API endpoints with real database"""
 from fastapi import APIRouter, HTTPException, Query
-from typing import Optional, List
-from app.services.mock_data import MockDataService
-from app.models.target import DeepSkyTarget
+from typing import List, Optional
+from app.services.astronomy import AstronomyService
+from app.models.database import DeepSkyObject, DatabaseStats
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
-mock_service = MockDataService()
+astronomy_service = AstronomyService()
+
+
+# IMPORTANT: Specific routes must be defined before parameterized routes
+# Otherwise "/search" will be matched by "/{target_id}"
+
+
+@router.get("/search")
+async def search_targets(
+    q: str = Query(..., description="搜索关键词"),
+    limit: int = Query(20, ge=1, le=100, description="返回数量限制")
+):
+    """
+    Search objects by name or alias
+
+    - Uses LIKE query on aliases table
+    - Returns partial matches
+    """
+    try:
+        results = await astronomy_service.search_objects(q, limit)
+    except Exception as e:
+        logger.error(f"Error searching objects: {e}")
+        results = []
+
+    return {
+        "success": True,
+        "data": {
+            "targets": [obj.model_dump() for obj in results],
+            "count": len(results)
+        },
+        "message": f"Found {len(results)} objects matching '{q}'"
+    }
+
+
+@router.get("/stats")
+async def get_statistics():
+    """
+    Return database statistics
+
+    - Total object count
+    - Objects by type
+    - Constellations covered
+    """
+    stats = await astronomy_service.get_statistics()
+
+    return {
+        "success": True,
+        "data": stats.model_dump() if stats else {
+            "total_objects": 0,
+            "objects_by_type": {},
+            "constellations_covered": 0
+        },
+        "message": "Database statistics"
+    }
+
+
+@router.post("/sync")
+async def sync_from_simbad(object_ids: List[str]):
+    """
+    Manually trigger SIMBAD sync for specific objects
+
+    Useful for:
+    - Refreshing data
+    - Adding new objects
+    - Updating existing objects
+    """
+    synced = []
+    failed = []
+
+    for object_id in object_ids:
+        obj = await astronomy_service.simbad.query_object(object_id)
+        if obj:
+            await astronomy_service.db.save_object(obj)
+            synced.append(object_id)
+        else:
+            failed.append(object_id)
+
+    return {
+        "success": True,
+        "data": {
+            "synced": synced,
+            "failed": failed
+        },
+        "message": f"Synced {len(synced)} objects, {len(failed)} failed"
+    }
 
 
 @router.get("")
 async def list_targets(
     type: Optional[str] = Query(None, description="目标类型"),
     constellation: Optional[str] = Query(None, description="星座"),
-    min_magnitude: Optional[float] = Query(None, description="最小星等"),
-    max_magnitude: Optional[float] = Query(None, description="最大星等"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量")
-) -> dict:
-    """获取所有目标"""
-    targets = mock_service.load_targets()
+):
+    """
+    List targets with optional filters
 
-    # 应用过滤条件
-    if type:
-        targets = [t for t in targets if t.type == type]
+    - Filter by type: GALAXY, NEBULA, CLUSTER, PLANETARY
+    - Filter by constellation name
+    - Pagination support
+    """
+    try:
+        if type:
+            objects = await astronomy_service.get_objects_by_type(type)
+        elif constellation:
+            objects = await astronomy_service.get_objects_by_constellation(constellation)
+        else:
+            # Return all (with simple pagination on first page)
+            # For full pagination, we'd need a dedicated method
+            objects = await astronomy_service.get_objects_by_type("GALAXY")
+            objects += await astronomy_service.get_objects_by_type("NEBULA")
+            objects += await astronomy_service.get_objects_by_type("CLUSTER")
+            objects += await astronomy_service.get_objects_by_type("PLANETARY")
+    except Exception as e:
+        logger.error(f"Error fetching objects: {e}")
+        objects = []
 
-    if constellation:
-        targets = [t for t in targets if t.constellation.lower() == constellation.lower()]
-
-    if min_magnitude is not None:
-        targets = [t for t in targets if t.magnitude >= min_magnitude]
-
-    if max_magnitude is not None:
-        targets = [t for t in targets if t.magnitude <= max_magnitude]
-
-    total = len(targets)
     start = (page - 1) * page_size
     end = start + page_size
-    paginated_targets = targets[start:end]
+    paginated = objects[start:end]
 
     return {
         "success": True,
         "data": {
-            "targets": [t.model_dump() for t in paginated_targets],
-            "total": total,
+            "targets": [obj.model_dump() for obj in paginated],
             "page": page,
-            "page_size": page_size
+            "page_size": page_size,
+            "total": len(objects)
         },
-        "message": "获取成功"
-    }
-
-
-@router.get("/search")
-async def search_targets(q: str = Query(..., description="搜索关键词")) -> dict:
-    """搜索目标"""
-    results = mock_service.search_targets(q)
-
-    return {
-        "success": True,
-        "data": {
-            "results": [t.model_dump() for t in results]
-        },
-        "message": "搜索成功"
+        "message": f"Returning {len(paginated)} objects"
     }
 
 
 @router.get("/{target_id}")
-async def get_target(target_id: str) -> dict:
-    """获取单个目标详情"""
-    target = mock_service.get_target_by_id(target_id)
+async def get_target(target_id: str):
+    """
+    Get deep sky object by ID
 
-    if not target:
-        raise HTTPException(status_code=404, detail="目标不存在")
+    - Checks local SQLite first (~1-5ms)
+    - Falls back to SIMBAD API if not found (~200-500ms)
+    - Caches API results in SQLite
+    """
+    obj = await astronomy_service.get_object(target_id)
+
+    if not obj:
+        return {
+            "success": True,
+            "data": None,
+            "message": f"Object {target_id} not found"
+        }
 
     return {
         "success": True,
-        "data": target.model_dump(),
-        "message": "获取成功"
+        "data": obj.model_dump(),
+        "message": "Object retrieved successfully"
+    }
+
+
+@router.get("")
+async def list_targets(
+    type: Optional[str] = Query(None, description="目标类型"),
+    constellation: Optional[str] = Query(None, description="星座"),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量")
+):
+    """
+    List targets with optional filters
+
+    - Filter by type: GALAXY, NEBULA, CLUSTER, PLANETARY
+    - Filter by constellation name
+    - Pagination support
+    """
+    try:
+        if type:
+            objects = await astronomy_service.get_objects_by_type(type)
+        elif constellation:
+            objects = await astronomy_service.get_objects_by_constellation(constellation)
+        else:
+            # Return all (with simple pagination on first page)
+            # For full pagination, we'd need a dedicated method
+            objects = await astronomy_service.get_objects_by_type("GALAXY")
+            objects += await astronomy_service.get_objects_by_type("NEBULA")
+            objects += await astronomy_service.get_objects_by_type("CLUSTER")
+            objects += await astronomy_service.get_objects_by_type("PLANETARY")
+    except Exception as e:
+        logger.error(f"Error fetching objects: {e}")
+        objects = []
+
+    start = (page - 1) * page_size
+    end = start + page_size
+    paginated = objects[start:end]
+
+    return {
+        "success": True,
+        "data": {
+            "targets": [obj.model_dump() for obj in paginated],
+            "page": page,
+            "page_size": page_size,
+            "total": len(objects)
+        },
+        "message": f"Returning {len(paginated)} objects"
+    }
+
+
+@router.get("/stats")
+async def get_statistics():
+    """
+    Return database statistics
+
+    - Total object count
+    - Objects by type
+    - Constellations covered
+    """
+    stats = await astronomy_service.get_statistics()
+
+    return {
+        "success": True,
+        "data": stats.model_dump() if stats else {
+            "total_objects": 0,
+            "objects_by_type": {},
+            "constellations_covered": 0
+        },
+        "message": "Database statistics"
+    }
+
+
+@router.post("/sync")
+async def sync_from_simbad(object_ids: List[str]):
+    """
+    Manually trigger SIMBAD sync for specific objects
+
+    Useful for:
+    - Refreshing data
+    - Adding new objects
+    - Updating existing objects
+    """
+    synced = []
+    failed = []
+
+    for object_id in object_ids:
+        obj = await astronomy_service.simbad.query_object(object_id)
+        if obj:
+            await astronomy_service.db.save_object(obj)
+            synced.append(object_id)
+        else:
+            failed.append(object_id)
+
+    return {
+        "success": True,
+        "data": {
+            "synced": synced,
+            "failed": failed
+        },
+        "message": f"Synced {len(synced)} objects, {len(failed)} failed"
     }

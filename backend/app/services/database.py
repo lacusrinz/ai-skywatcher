@@ -123,20 +123,61 @@ class DatabaseService:
         return results
 
     async def get_objects_by_type(self, obj_type: str) -> List[DeepSkyObject]:
-        """Get all objects of a specific type"""
+        """Get all objects of a specific type (optimized with JOIN)"""
         conn = await self.connect()
 
-        cursor = await conn.execute(
-            "SELECT id FROM objects WHERE type = ?",
-            (obj_type,)
-        )
+        # Single query with JOIN to get all data at once
+        query = """
+            SELECT
+                o.id, o.name, o.type, o.ra, o.dec, o.magnitude,
+                o.size_major, o.size_minor, o.constellation, o.surface_brightness,
+                oi.best_month, oi.difficulty, oi.min_aperture, oi.notes as obs_notes,
+                GROUP_CONCAT(a.alias, ',') as aliases_str
+            FROM objects o
+            LEFT JOIN observational_info oi ON o.id = oi.object_id
+            LEFT JOIN aliases a ON o.id = a.object_id
+            WHERE o.type = ?
+            GROUP BY o.id
+        """
+        cursor = await conn.execute(query, (obj_type,))
         rows = await cursor.fetchall()
 
         results = []
         for row in rows:
-            obj = await self.get_object_by_id(row['id'])
-            if obj:
+            try:
+                # Parse aliases
+                aliases_str = row['aliases_str']
+                aliases = aliases_str.split(',') if aliases_str else []
+
+                # Create observational info
+                obs_info = None
+                if row['obs_notes']:
+                    obs_info = ObservationalInfo(
+                        best_month=row['best_month'],
+                        difficulty=row['difficulty'],
+                        min_aperture=row['min_aperture'],
+                        min_magnitude=None,
+                        notes=row['obs_notes']
+                    )
+
+                obj = DeepSkyObject(
+                    id=row['id'],
+                    name=row['name'],
+                    type=row['type'],
+                    ra=row['ra'],
+                    dec=row['dec'],
+                    magnitude=row['magnitude'],
+                    size_major=row['size_major'],
+                    size_minor=row['size_minor'],
+                    constellation=row['constellation'],
+                    surface_brightness=row['surface_brightness'],
+                    aliases=aliases,
+                    observational_info=obs_info
+                )
                 results.append(obj)
+            except Exception as e:
+                logger.error(f"Error parsing row {row['id']}: {e}")
+                continue
 
         return results
 

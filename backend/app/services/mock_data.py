@@ -1,8 +1,26 @@
-"""Mock data service for development"""
+"""
+DEPRECATED: Mock data service replaced by DatabaseService
+
+This service is kept for backward compatibility during transition.
+Use app.services.database.DatabaseService instead.
+
+Migration guide:
+- Replace: mock_service = MockDataService()
+- With: db_service = DatabaseService()
+- All method signatures remain compatible
+"""
+import warnings
 import json
 from typing import List, Optional
 from pathlib import Path
 from app.models.target import DeepSkyTarget
+
+# Issue deprecation warning when module is imported
+warnings.warn(
+    "MockDataService is deprecated. Use DatabaseService instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 
 class MockDataService:
