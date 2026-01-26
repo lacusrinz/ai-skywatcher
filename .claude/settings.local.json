@@ -5,7 +5,9 @@
       "mcp__pencil__get_editor_state",
       "Skill(superpowers:brainstorming)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Skill(superpowers:writing-plans)",
+      "Skill(superpowers:subagent-driven-development)"
     ]
   }
 }
