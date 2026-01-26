@@ -12,7 +12,8 @@
       "Bash(pytest:*)",
       "Bash(python:*)",
       "Bash(/bin/ls:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(test:*)"
     ]
   }
 }

@@ -1,7 +1,7 @@
 # backend/app/models/database.py
 """Database models for deep sky objects"""
-from pydantic import BaseModel
-from typing import Optional, List
+from pydantic import BaseModel, Field
+from typing import Optional, List, Dict
 
 class ObservationalInfo(BaseModel):
     """Observational information for viewing guidance"""
@@ -23,11 +23,11 @@ class DeepSkyObject(BaseModel):
     size_minor: Optional[float] = None  # arcminutes
     constellation: Optional[str] = None
     surface_brightness: Optional[float] = None
-    aliases: List[str] = []
+    aliases: List[str] = Field(default_factory=list)
     observational_info: Optional[ObservationalInfo] = None
 
 class DatabaseStats(BaseModel):
     """Database statistics"""
     total_objects: int
-    objects_by_type: dict
+    objects_by_type: Dict[str, int]
     constellations_covered: int
