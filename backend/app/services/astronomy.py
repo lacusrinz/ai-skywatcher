@@ -1,14 +1,69 @@
-"""Astronomy service for celestial calculations"""
-from typing import Tuple
+"""Enhanced astronomy service with database + SIMBAD fallback"""
+import logging
+from typing import Tuple, Optional, List
 from datetime import datetime, timedelta
 import math
+from app.services.database import DatabaseService
+from app.services.simbad import SIMBADService
+from app.models.database import DeepSkyObject
 
+logger = logging.getLogger(__name__)
 
 class AstronomyService:
-    """天体位置计算服务"""
+    """Enhanced service with local DB and SIMBAD fallback"""
 
     def __init__(self):
-        pass
+        self.db = DatabaseService()
+        self.simbad = SIMBADService()
+
+    # ========== Data Access Methods ==========
+
+    async def get_object(self, object_id: str) -> Optional[DeepSkyObject]:
+        """
+        Get object with automatic fallback:
+        1. Try local database (fast, <5ms)
+        2. Fallback to SIMBAD API (slow, ~200-500ms)
+        3. Cache API results locally
+        """
+        # Try local database first
+        logger.debug(f"Looking up object {object_id} in local database")
+        obj = await self.db.get_object_by_id(object_id)
+
+        if obj:
+            logger.info(f"Found {object_id} in local database")
+            return obj
+
+        # Not found locally, try SIMBAD API
+        logger.info(f"Object {object_id} not found locally, querying SIMBAD API")
+        obj = await self.simbad.query_object(object_id)
+
+        if obj:
+            # Cache result locally
+            logger.info(f"SIMBAD returned {object_id}, caching locally")
+            await self.db.save_object(obj)
+            return obj
+
+        # Not found anywhere
+        logger.warning(f"Object {object_id} not found in local DB or SIMBAD")
+        return None
+
+    async def search_objects(self, name: str, limit: int = 20) -> List[DeepSkyObject]:
+        """Search objects by name (local database only)"""
+        return await self.db.search_objects(name, limit)
+
+    async def get_objects_by_constellation(self, constellation: str) -> List[DeepSkyObject]:
+        """Get all objects in a constellation"""
+        return await self.db.get_objects_by_constellation(constellation)
+
+    async def get_objects_by_type(self, obj_type: str) -> List[DeepSkyObject]:
+        """Get all objects of a specific type"""
+        return await self.db.get_objects_by_type(obj_type)
+
+    async def get_statistics(self):
+        """Get database statistics"""
+        return await self.db.get_statistics()
+
+    # ========== Celestial Calculation Methods (Existing) ==========
 
     def calculate_position(
         self,
