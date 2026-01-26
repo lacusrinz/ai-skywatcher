@@ -187,10 +187,22 @@ def import_objects(conn: sqlite3.Connection, data: List[Dict]):
         for col in ['M', 'NGC', 'IC']:
             cross_ref = item.get(col, '')
             if cross_ref:
+                # Add standard format (e.g., M31, NGC224)
+                # Remove leading zeros for Messier objects
+                if col == 'M':
+                    standard_ref = str(int(cross_ref))
+                else:
+                    standard_ref = cross_ref.lstrip('0') or '0'
                 aliases.append({
                     'object_id': obj_id,
-                    'alias': f"{col}{cross_ref}"
+                    'alias': f"{col}{standard_ref}"
                 })
+                # Also add the original format if different (e.g., M031)
+                if col == 'M' and cross_ref.startswith('0'):
+                    aliases.append({
+                        'object_id': obj_id,
+                        'alias': f"{col}{cross_ref}"
+                    })
 
         # Generate observational info
         obs_info = {

@@ -19,7 +19,8 @@
       "WebSearch",
       "mcp__zread__get_repo_structure",
       "mcp__web-reader__webReader",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(sqlite3:*)"
     ]
   }
 }
