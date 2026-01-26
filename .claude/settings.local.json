@@ -7,7 +7,12 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Skill(superpowers:writing-plans)",
-      "Skill(superpowers:subagent-driven-development)"
+      "Skill(superpowers:subagent-driven-development)",
+      "Bash(find:*)",
+      "Bash(pytest:*)",
+      "Bash(python:*)",
+      "Bash(/bin/ls:*)",
+      "Bash(python3:*)"
     ]
   }
 }
