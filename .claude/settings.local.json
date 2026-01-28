@@ -26,7 +26,13 @@
       "mcp__pencil__batch_design",
       "mcp__pencil__get_screenshot",
       "Bash(source:*)",
-      "Bash(npm run dev:*)"
+      "Bash(npm run dev:*)",
+      "Bash(pip install:*)",
+      "Bash(git show:*)",
+      "Bash(pkill:*)",
+      "Bash(lsof:*)",
+      "Bash(open http://localhost:8000/docs)",
+      "Bash(kill:*)"
     ]
   }
 }
