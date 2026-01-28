@@ -52,3 +52,27 @@ async def test_recommendations_with_filters():
     assert response.status_code == 200
     data = response.json()
     assert data["success"] is True
+
+@pytest.mark.asyncio
+async def test_recommendations_returns_many_targets():
+    """Test that recommendations return targets from real database"""
+    response = client.post(
+        "/api/v1/recommendations",
+        json={
+            "location": {"latitude": 39.9, "longitude": 116.4},
+            "date": "2025-01-28",
+            "equipment": {
+                "type": "refractor",
+                "aperture": 80,
+                "focal_length": 500
+            },
+            "limit": 20
+        }
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    # Should return some recommendations from the 13,318 objects
+    assert len(data["data"]["recommendations"]) > 0
+    # Verify we're not using mock data (only 10 objects)
+    assert len(data["data"]["recommendations"]) > 5

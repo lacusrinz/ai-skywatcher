@@ -116,18 +116,27 @@ class RecommendationService:
         filters: Optional[dict] = None
     ) -> List[DBDeepSkyObject]:
         """Load targets from database with optional filters"""
+        # TODO: For performance, implement proper pagination
+        # For now, load a reasonable subset
+
         # If type filter specified, use optimized query
         if filters and "types" in filters:
             all_objects = []
             for obj_type in filters["types"]:
                 objects = await self.db_service.get_objects_by_type(obj_type)
                 all_objects.extend(objects)
-            return all_objects
+            return all_objects[:1000]  # Limit to 1000 for performance
 
-        # Otherwise get statistics to check total count
-        # For now, return empty list - actual loading happens in recommendations
-        # to allow filtering by magnitude/other criteria
-        return []
+        # If no filters, get a sample across different types
+        # In production, this should use cursor-based pagination
+        sample_objects = []
+
+        # Get some galaxies, nebulae, and clusters
+        for obj_type in ["GALAXY", "NEBULA", "CLUSTER"]:
+            objects = await self.db_service.get_objects_by_type(obj_type)
+            sample_objects.extend(objects[:500])  # 500 of each type
+
+        return sample_objects
 
     def _apply_filters(
         self,

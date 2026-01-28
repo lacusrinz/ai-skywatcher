@@ -26,6 +26,20 @@ async def get_recommendations(request: dict) -> dict:
         for i, zone in enumerate(request.get("visible_zones", []))
     ]
 
+    # If no zones provided, create a default full-sky zone
+    if not visible_zones:
+        visible_zones = [
+            VisibleZone(
+                id="full_sky",
+                name="Full Sky",
+                polygon=[
+                    (0, 15), (90, 15), (180, 15), (270, 15),
+                    (270, 90), (180, 90), (90, 90), (0, 90)
+                ],
+                priority=1
+            )
+        ]
+
     # Generate recommendations with real database
     recommendations = await recommendation_service.generate_recommendations(
         targets=None,  # Not used, loads from DB
