@@ -32,7 +32,15 @@
       "Bash(pkill:*)",
       "Bash(lsof:*)",
       "Bash(open http://localhost:8000/docs)",
-      "Bash(kill:*)"
+      "Bash(kill:*)",
+      "Bash(grep:*)",
+      "Bash(if:*)",
+      "Bash(then cat /private/tmp/claude/-Users-rinzlacus-Downloads-Coding-ai-skywatcher/tasks/bcc7a81.output)",
+      "Bash(else:*)",
+      "Bash(fi:*)",
+      "Bash(wait:*)",
+      "Bash(xargs kill:*)",
+      "Skill(superpowers:finishing-a-development-branch)"
     ]
   }
 }
