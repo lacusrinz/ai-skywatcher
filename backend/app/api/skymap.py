@@ -5,7 +5,6 @@ from typing import Optional, List, Dict
 from app.services.astronomy import AstronomyService
 from app.services.database import DatabaseService
 from app.services.model_adapter import ModelAdapter
-from app.services.mock_data import MockDataService
 import logging
 
 # Constants
@@ -29,7 +28,6 @@ router = APIRouter()
 astronomy_service = AstronomyService()
 db_service = DatabaseService()
 model_adapter = ModelAdapter()
-mock_service = MockDataService()
 
 
 def _prepare_target_filters(target_types: List[str]) -> List[str]:
@@ -210,8 +208,11 @@ async def get_sky_map_timeline(request: dict) -> dict:
                 # Calculate position for each target at this time
                 positions = []
                 for target_id in target_ids:
-                    target = mock_service.get_target_by_id(target_id)
-                    if target:
+                    obj = await db_service.get_object_by_id(target_id)
+                    if obj:
+                        # Convert database model to API model
+                        target = model_adapter.to_target(obj)
+
                         alt, az = astronomy_service.calculate_position(
                             target.ra,
                             target.dec,
