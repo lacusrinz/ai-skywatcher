@@ -2,18 +2,20 @@
 from fastapi import APIRouter
 from datetime import datetime
 from app.services.recommendation import RecommendationService
-from app.services.mock_data import MockDataService
+from app.services.database import DatabaseService
+from app.services.model_adapter import ModelAdapter
 from app.models.target import VisibleZone
 
 router = APIRouter()
 recommendation_service = RecommendationService()
-mock_service = MockDataService()
+db_service = DatabaseService()
+model_adapter = ModelAdapter()
 
 
 @router.post("")
 async def get_recommendations(request: dict) -> dict:
-    """获取推荐目标"""
-    # 转换可视区域格式
+    """Get recommendations using real database"""
+    # Convert visible zones format
     visible_zones = [
         VisibleZone(
             id=zone.get("id", f"zone_{i}"),
@@ -24,12 +26,9 @@ async def get_recommendations(request: dict) -> dict:
         for i, zone in enumerate(request.get("visible_zones", []))
     ]
 
-    # 加载所有目标
-    targets = mock_service.load_targets()
-
-    # 生成推荐
-    recommendations = recommendation_service.generate_recommendations(
-        targets=targets,
+    # Generate recommendations with real database
+    recommendations = await recommendation_service.generate_recommendations(
+        targets=None,  # Not used, loads from DB
         observer_lat=request["location"]["latitude"],
         observer_lon=request["location"]["longitude"],
         date=datetime.fromisoformat(request["date"]),
@@ -39,7 +38,7 @@ async def get_recommendations(request: dict) -> dict:
         limit=request.get("limit", 20)
     )
 
-    # 生成统计
+    # Generate statistics
     total_count = len(recommendations)
     by_period = {}
     by_type = {}
