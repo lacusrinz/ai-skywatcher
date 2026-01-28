@@ -1,4 +1,8 @@
-"""Visibility API routes"""
+"""
+Visibility API routes
+
+Uses real astronomical data from DatabaseService (OpenNGC database with 13,318 objects).
+"""
 from fastapi import APIRouter, HTTPException
 from datetime import datetime
 from app.services.astronomy import AstronomyService

@@ -1,4 +1,8 @@
-"""Recommendations API routes"""
+"""
+Recommendations API routes
+
+Uses real astronomical data from DatabaseService (OpenNGC database with 13,318 objects).
+"""
 from fastapi import APIRouter
 from datetime import datetime
 from app.services.recommendation import RecommendationService
