@@ -3,22 +3,28 @@ from fastapi import APIRouter, HTTPException
 from datetime import datetime
 from app.services.astronomy import AstronomyService
 from app.services.visibility import VisibilityService
-from app.services.mock_data import MockDataService
+from app.services.database import DatabaseService
+from app.services.model_adapter import ModelAdapter
 from app.models.visibility import PositionRequest, VisibilityWindowsRequest, BatchPositionsRequest
 
 router = APIRouter()
 astronomy_service = AstronomyService()
 visibility_service = VisibilityService()
-mock_service = MockDataService()
+db_service = DatabaseService()  # CHANGED: Use real database
+model_adapter = ModelAdapter()  # NEW: Model adapter
 
 
 @router.post("/position")
 async def calculate_position(request: PositionRequest) -> dict:
-    """计算目标实时位置"""
-    target = mock_service.get_target_by_id(request.target_id)
+    """Calculate target position using real database"""
+    # Get object from real database
+    obj = await db_service.get_object_by_id(request.target_id)
 
-    if not target:
+    if not obj:
         raise HTTPException(status_code=404, detail="目标不存在")
+
+    # Convert to API model
+    target = model_adapter.to_target(obj)
 
     timestamp = datetime.fromisoformat(request.timestamp) if request.timestamp else datetime.now()
 
@@ -56,11 +62,15 @@ async def calculate_position(request: PositionRequest) -> dict:
 
 @router.post("/windows")
 async def calculate_visibility_windows(request: VisibilityWindowsRequest) -> dict:
-    """计算目标可见性窗口"""
-    target = mock_service.get_target_by_id(request.target_id)
+    """Calculate visibility windows using real database"""
+    # Get object from real database
+    obj = await db_service.get_object_by_id(request.target_id)
 
-    if not target:
+    if not obj:
         raise HTTPException(status_code=404, detail="目标不存在")
+
+    # Convert to API model
+    target = model_adapter.to_target(obj)
 
     # 转换可视区域格式
     from app.models.target import VisibleZone
@@ -100,15 +110,19 @@ async def calculate_visibility_windows(request: VisibilityWindowsRequest) -> dic
 
 @router.post("/positions-batch")
 async def calculate_batch_positions(request: BatchPositionsRequest) -> dict:
-    """批量计算多个目标位置"""
+    """Batch calculate positions using real database"""
     timestamp = datetime.fromisoformat(request.timestamp) if request.timestamp else datetime.now()
 
     positions = []
     for target_id in request.target_ids:
-        target = mock_service.get_target_by_id(target_id)
+        # Get object from real database
+        obj = await db_service.get_object_by_id(target_id)
 
-        if not target:
+        if not obj:
             continue
+
+        # Convert to API model
+        target = model_adapter.to_target(obj)
 
         alt, az = astronomy_service.calculate_position(
             target.ra,
