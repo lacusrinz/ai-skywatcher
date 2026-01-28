@@ -58,7 +58,10 @@ class ModelAdapter:
 
     def _calculate_size(self, major: float = None, minor: float = None) -> float:
         """Calculate size from major/minor axes"""
-        # Use major axis if available, otherwise minor, otherwise default
+        if major is None and minor is None:
+            return 10.0  # Default size
+        if major is not None and minor is not None:
+            return (major + minor) / 2  # Average both axes
         return major or minor or 10.0
 
     def _normalize_type(self, db_type: str) -> str:

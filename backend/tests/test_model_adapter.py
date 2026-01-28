@@ -39,7 +39,7 @@ async def test_convert_deep_sky_object_to_target():
     assert target.ra == 10.684
     assert target.dec == 41.269
     assert target.magnitude == 3.4
-    assert target.size == 178.0  # Uses size_major
+    assert target.size == 119.0  # Average of major (178.0) and minor (60.0)
     assert target.constellation == "And"
     assert target.difficulty == 1  # EASY -> 1
 
