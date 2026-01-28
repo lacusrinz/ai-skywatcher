@@ -1,7 +1,7 @@
 # 真实天文数据库集成总结
 
 **日期**: 2025-01-26
-**版本**: v2.0.0
+**版本**: v2.5.0
 **功能**: 用真实天文数据替换 Mock 数据，集成 OpenNGC 和 SIMBAD 数据库
 
 ---
@@ -15,6 +15,7 @@
 ## 核心功能
 
 ### 1. OpenNGC 数据库集成
+
 - **数据来源**: OpenNGC (mattiaverga/OpenNGC) - CC-BY-SA-4.0 许可证
 - **数据格式**: Semicolon-delimited CSV (NGC.csv + addendum.csv)
 - **数据规模**:
@@ -28,7 +29,9 @@
 - **星座覆盖**: 全部 88 个星座
 
 ### 2. 本地 SQLite 数据库
+
 **数据库结构**:
+
 ```
 app/data/deep_sky.db
 ├── objects              # 天体主表（13,318 条）
@@ -51,6 +54,7 @@ app/data/deep_sky.db
 ```
 
 **索引优化**:
+
 ```sql
 CREATE INDEX idx_objects_ra_dec ON objects(ra, dec);
 CREATE INDEX idx_objects_constellation ON objects(constellation);
@@ -59,13 +63,16 @@ CREATE INDEX idx_aliases_alias ON aliases(alias);
 ```
 
 ### 3. SIMBAD API 回退机制
+
 **工作流程**:
+
 1. 查询本地 SQLite 数据库（~1-5ms）
 2. 未找到 → 查询 SIMBAD TAP API（~200-500ms）
 3. SIMBAD 返回 → 自动缓存到本地数据库
 4. 下次查询 → 直接从本地获取
 
 **ADQL 查询示例**:
+
 ```sql
 SELECT
   main_id, ra, dec, coo_biblic, allotypes, otype_txt,
@@ -75,17 +82,21 @@ WHERE 1=CONTAINS(name, 'NGC224')
 ```
 
 **类型映射**:
+
 - SIMBAD `G` → `GALAXY`
 - SIMBAD `PN` → `PLANETARY`
 - SIMBAD `HII`, `EmN`, `RfN`, `Neb` → `NEBULA`
 - SIMBAD `OCl`, `GCl` → `CLUSTER`
 
 ### 4. 性能优化
+
 **问题**: `get_objects_by_type()` 存在 N+1 查询问题
+
 - 旧实现: 查询 ID → 对每个对象调用 `get_object_by_id()`（N+1 查询）
 - 性能: 查询 10,749 个星系耗时 **1,602ms**
 
 **解决方案**: 单次 JOIN 查询
+
 ```sql
 SELECT
   o.id, o.name, o.type, o.ra, o.dec, o.magnitude,
@@ -100,6 +111,7 @@ GROUP BY o.id
 ```
 
 **优化结果**:
+
 - 新性能: 查询 10,749 个星系耗时 **92.23ms**
 - 提升: **17.4 倍** ✅
 
@@ -110,21 +122,27 @@ GROUP BY o.id
 ### 文件修改清单
 
 #### 1. `backend/app/data/schema.sql` (新建)
+
 数据库结构定义，包含 3 个表：
+
 - **objects** - 主表，9 个字段
 - **aliases** - 别名表，复合主键
 - **observational_info** - 观测信息表
 
 #### 2. `backend/app/models/database.py` (新建)
+
 Pydantic 数据模型：
+
 - `DeepSkyObject` - 深空天体对象
 - `ObservationalInfo` - 观测信息
 - `DatabaseStats` - 数据库统计
 
 #### 3. `scripts/import_openngc.py` (新建)
+
 OpenNGC 数据导入脚本：
 
 **功能**:
+
 - 下载 NGC.csv 和 addendum.csv
 - 解析 semicolon-delimited CSV
 - 坐标转换（HH:MM:SS → 度）
@@ -134,12 +152,14 @@ OpenNGC 数据导入脚本：
 - 使用 `INSERT OR IGNORE` 避免重复
 
 **运行**:
+
 ```bash
 cd /path/to/ai-skywatcher
 python scripts/import_openngc.py
 ```
 
 **输出**:
+
 ```
 ✓ Downloaded 14,238 rows from NGC.csv
 ✓ Downloaded 349 rows from addendum.csv
@@ -150,9 +170,11 @@ python scripts/import_openngc.py
 ```
 
 #### 4. `backend/app/services/database.py` (新建)
+
 本地数据库服务：
 
 **核心方法**:
+
 - `connect()` - 建立异步连接
 - `get_object_by_id()` - 按 ID 查询（含别名、观测信息）
 - `search_objects()` - 模糊搜索（名称、别名）
@@ -172,9 +194,11 @@ python scripts/import_openngc.py
 | 按星座过滤 | 10-20 ms | <50ms | ✅ 14.90ms |
 
 #### 5. `backend/app/services/simbad.py` (新建)
+
 SIMBAD TAP API 服务：
 
 **核心方法**:
+
 - `query_object()` - 查询天体数据
 - `_execute_adql_query()` - 执行 ADQL 查询
 - `_parse_simbad_response()` - 解析响应
@@ -183,15 +207,18 @@ SIMBAD TAP API 服务：
 - `_extract_size()` - 提取尺寸
 
 **配置**:
+
 ```python
 SIMBAD_TAP_URL = "https://simbad.u-strasbg.fr/simbad/sim-tap/sync"
 TIMEOUT = 30
 ```
 
 #### 6. `backend/app/services/astronomy.py` (修改)
+
 增强天文服务，添加混合查询引擎：
 
 **新增方法**:
+
 ```python
 async def get_object(
     target_id: str,
@@ -214,13 +241,16 @@ async def get_object(
 ```
 
 **修改方法**:
+
 - `get_all_objects()` - 现在从本地数据库读取
 - `search_objects()` - 现在支持本地数据库搜索
 
 #### 7. `backend/app/api/targets.py` (修改)
+
 更新 Targets API 端点：
 
 **新增端点**:
+
 - `GET /api/v1/targets/{target_id}` - 获取天体详情（支持 M/NGC/IC 编号）
 - `GET /api/v1/targets/search?q=` - 搜索天体（名称、别名）
 - `GET /api/v1/targets/stats` - 数据库统计信息
@@ -229,6 +259,7 @@ async def get_object(
 - `POST /api/v1/targets/sync` - 手动 SIMBAD 同步
 
 **关键修复**: 路由顺序
+
 ```python
 # 错误顺序:
 @router.get("/{target_id}")  # 会匹配 /search
@@ -241,15 +272,19 @@ async def get_object(
 ```
 
 #### 8. `backend/app/services/mock_data.py` (修改)
+
 弃用 Mock 数据服务：
 
 **变更**:
+
 - 所有方法添加弃用警告：`DeprecationWarning: MockDataService is deprecated. Use DatabaseService instead.`
 - 保留方法以向后兼容
 - 添加注释说明替代方案
 
 #### 9. `backend/docs/DATABASE.md` (新建)
+
 完整的数据库文档，包含：
+
 - 数据库概述和统计
 - 表结构详细说明
 - 数据导入流程
@@ -259,7 +294,9 @@ async def get_object(
 - 故障排除指南
 
 #### 10. `backend/README.md` (更新)
+
 更新项目文档，添加：
+
 - 真实天文数据库说明
 - 本地数据库统计
 - SIMBAD 集成说明
@@ -268,7 +305,9 @@ async def get_object(
 - 查询示例
 
 #### 11. `backend/tests/performance/test_database_performance.py` (新建)
+
 性能测试套件，6 个测试用例：
+
 ```python
 test_local_query_performance()        # 本地查询 <5ms
 test_search_performance()             # 搜索 <20ms
@@ -338,6 +377,7 @@ JSONResponse
 ## 关键技术点
 
 ### 1. CSV 解析与坐标转换
+
 ```python
 # OpenNGC 使用 semicolon delimiter
 reader = csv.DictReader(StringIO(content), delimiter=';')
@@ -357,6 +397,7 @@ def dms_to_degrees(dms: str) -> float:
 ```
 
 ### 2. ID 标准化
+
 ```python
 # OpenNGC ID 格式: "NGC 224", "IC 342"
 # 数据库 ID 格式: "NGC0224", "IC0342"
@@ -375,6 +416,7 @@ if col == 'M':
 ```
 
 ### 3. GROUP_CONCAT 优化
+
 ```python
 # 避免 N+1 查询：使用 GROUP_CONCAT 合并别名
 query = """
@@ -393,6 +435,7 @@ aliases = aliases_str.split(',') if aliases_str else []
 ```
 
 ### 4. 观测难度计算
+
 ```python
 # 表面亮度 = 星等 + 2.5 × log10(长轴²)
 surface_brightness = magnitude + 2.5 * math.log10(size_major ** 2)
@@ -417,6 +460,7 @@ else:
 ```
 
 ### 5. SIMBAD 类型映射
+
 ```python
 TYPE_MAPPING = {
     'G': 'GALAXY',
@@ -449,6 +493,7 @@ python scripts/import_openngc.py
 ```
 
 **输出示例**:
+
 ```
 Downloading OpenNGC data...
 ✓ Downloaded NGC.csv (14,238 rows)
@@ -468,31 +513,37 @@ Importing to database...
 ### API 查询示例
 
 **获取天体详情**:
+
 ```bash
 curl "http://localhost:8000/api/v1/targets/NGC0224"
 ```
 
 **搜索天体**:
+
 ```bash
 curl "http://localhost:8000/api/v1/targets/search?q=Andromeda&limit=10"
 ```
 
 **按类型过滤**:
+
 ```bash
 curl "http://localhost:8000/api/v1/targets?type=GALAXY&page=1&page_size=20"
 ```
 
 **按星座过滤**:
+
 ```bash
 curl "http://localhost:8000/api/v1/targets?constellation=Ori"
 ```
 
 **获取统计信息**:
+
 ```bash
 curl "http://localhost:8000/api/v1/targets/stats"
 ```
 
 **手动同步 SIMBAD**:
+
 ```bash
 curl -X POST "http://localhost:8000/api/v1/targets/sync" \
   -H "Content-Type: application/json" \
@@ -538,6 +589,7 @@ obj = await astro_service.get_object("IC9999")  # SIMBAD 回退
 ## 测试验证
 
 ### 功能测试
+
 - ✅ OpenNGC 数据导入成功（13,318 天体）
 - ✅ 数据库结构正确（3 表 + 索引）
 - ✅ 本地数据库查询正常
@@ -549,6 +601,7 @@ obj = await astro_service.get_object("IC9999")  # SIMBAD 回退
 - ✅ 星座过滤正常
 
 ### 性能测试
+
 - ✅ 本地查询: **0.97ms** (目标 <5ms)
 - ✅ 搜索查询: **11.63ms** (目标 <20ms)
 - ✅ 批量查询(100): **36.81ms** (目标 <1s)
@@ -557,6 +610,7 @@ obj = await astro_service.get_object("IC9999")  # SIMBAD 回退
 - ✅ 按星座过滤: **14.90ms** (目标 <50ms)
 
 ### 集成测试
+
 - ✅ 前后端联调正常
 - ✅ 数据可视化正常
 - ✅ 推荐引擎使用真实数据
@@ -564,6 +618,7 @@ obj = await astro_service.get_object("IC9999")  # SIMBAD 回退
 - ✅ FOV 框显示真实目标
 
 ### 边界测试
+
 - ✅ 不存在的天体（SIMBAD 回退）
 - ✅ 特殊字符搜索（空格、连字符）
 - ✅ 超长别名
@@ -575,22 +630,26 @@ obj = await astro_service.get_object("IC9999")  # SIMBAD 回退
 ## 已知限制
 
 ### 1. OpenNGC 覆盖范围
+
 - **包含**: Messier (110), Caldwell (109), NGC/IC (~13,000)
 - **不包含**: Sharpless, Abell, PGC 等其他目录
 - **解决方案**: SIMBAD API 回退
 
 ### 2. SIMBAD API 限制
+
 - **速率限制**: 未公开，建议 <10 req/s
 - **查询超时**: 30 秒
 - **可用性**: 依赖外部服务
 - **解决方案**: 本地缓存 + 错误处理
 
 ### 3. 坐标精度
+
 - **OpenNGC**: J2000 历元，角分精度
 - **SIMBAD**: 实时更新，毫角秒精度
 - **差异**: 小于 1 角分，不影响摄影规划
 
 ### 4. 观测信息
+
 - **自动生成**: 基于表面亮度估算
 - **非官方**: 来自经验公式，非实测数据
 - **建议**: 仅供参考，结合实际情况调整
@@ -600,15 +659,18 @@ obj = await astro_service.get_object("IC9999")  # SIMBAD 回退
 ## 性能优化记录
 
 ### 优化前
+
 - `get_objects_by_type()`: N+1 查询问题
 - 查询 10,749 个星系: **1,602ms** ❌
 
 ### 优化后
+
 - 单次 JOIN 查询 + GROUP_CONCAT
 - 查询 10,749 个星系: **92.23ms** ✅
 - **提升**: 17.4 倍
 
 ### 优化原理
+
 ```python
 # N+1 查询（慢）
 for row in rows:
@@ -628,18 +690,21 @@ query = """
 ## 数据质量
 
 ### OpenNGC
+
 - **来源**: mattiaverga/OpenNGC (GitHub)
 - **许可**: CC-BY-SA-4.0
 - **更新**: 活跃维护（最新提交 2024）
 - **质量**: 高质量，交叉验证多个来源
 
 ### SIMBAD
+
 - **来源**: CDS Strasbourg（专业天文数据库）
 - **许可**: 免费学术使用（需引用）
 - **更新**: 实时更新（每日）
 - **质量**: 权威，专业天文学家使用
 
 ### 数据验证
+
 - ✅ Messier 天体：110/110 完整
 - ✅ Caldwell 天体：109/109 完整
 - ✅ 坐标范围验证（RA: 0-360°, Dec: -90° to +90°）
@@ -651,24 +716,28 @@ query = """
 ## 后续优化建议
 
 ### 1. 数据增强
+
 - **更多目录**: 集成 Sharpless (星云), Abell (行星状星云), PGC (星系)
 - **高分辨率图像**: 集成 DSS、SDSS 图像服务
 - **视场检查**: 验证目标是否在设备 FOV 内
 - **高度过滤**: 标记不适合北半球/南半球的目标
 
 ### 2. 性能优化
+
 - **Redis 缓存**: 热门查询缓存（TTL 1小时）
 - **批量查询**: 支持 `?ids=NGC0224,M031,IC342`
 - **查询优化**: 添加复合索引（如 `(type, constellation)`）
 - **异步导入**: 后台自动更新数据库（每日）
 
 ### 3. 功能扩展
+
 - **用户贡献**: 允许用户上传拍摄数据
 - **评分系统**: 用户对目标评分（难度、亮度）
 - **观测历史**: 记录用户拍摄历史
 - **智能推荐**: 基于历史推荐新目标
 
 ### 4. 数据质量
+
 - **交叉验证**: 与多个数据库交叉验证
 - **错误报告**: 用户报告数据错误
 - **自动修正**: 定期从 SIMBAD 更新数据
@@ -679,16 +748,20 @@ query = """
 ## 故障排除
 
 ### 问题 1: 数据库导入失败
+
 **错误**: `urllib.error.HTTPError: HTTP Error 404: Not Found`
 **原因**: OpenNGC URL 错误
 **解决**: 使用正确的 URL:
+
 ```python
 OPENNGC_NGC_URL = "https://raw.githubusercontent.com/mattiaverga/OpenNGC/refs/heads/master/database_files/NGC.csv"
 ```
 
 ### 问题 2: 别名重复错误
+
 **错误**: `sqlite3.IntegrityError: UNIQUE constraint failed`
 **解决**: 使用 `INSERT OR IGNORE`:
+
 ```python
 await conn.execute(
     "INSERT OR IGNORE INTO aliases (object_id, alias) VALUES (?, ?)",
@@ -697,15 +770,18 @@ await conn.execute(
 ```
 
 ### 问题 3: API 路由冲突
+
 **错误**: `/search` 返回 "Object search not found"
 **原因**: FastAPI 匹配 `/{target_id}` 而非 `/search`
 **解决**: 具体路由放在参数化路由前:
+
 ```python
 @router.get("/search")       # 具体路由
 @router.get("/{target_id}")  # 参数化路由
 ```
 
 ### 问题 4: 性能测试失败
+
 **错误**: 查询耗时 1.6 秒（目标 <100ms）
 **原因**: N+1 查询问题
 **解决**: 使用 JOIN + GROUP_CONCAT（见上文）
@@ -715,6 +791,7 @@ await conn.execute(
 ## 构建验证
 
 ### 后端测试
+
 ```bash
 cd backend
 
@@ -729,6 +806,7 @@ pytest --cov=app tests/ --cov-report=html
 ```
 
 ### 数据库验证
+
 ```bash
 # 检查数据库
 sqlite3 app/data/deep_sky.db
@@ -750,6 +828,7 @@ PLANETARY|1157
 ```
 
 ### API 验证
+
 ```bash
 # 启动服务
 uvicorn app.main:app --reload
@@ -765,6 +844,7 @@ curl "http://localhost:8000/api/v1/targets/search?q=Orion"
 ## 文件统计
 
 ### 新增文件
+
 - `backend/app/data/schema.sql` (1.5 KB)
 - `backend/app/models/database.py` (1.2 KB)
 - `backend/app/services/database.py` (8.5 KB)
@@ -774,15 +854,18 @@ curl "http://localhost:8000/api/v1/targets/search?q=Orion"
 - `backend/tests/performance/test_database_performance.py` (2.1 KB)
 
 ### 修改文件
+
 - `backend/app/services/astronomy.py` (+150 行)
 - `backend/app/api/targets.py` (+120 行)
 - `backend/app/services/mock_data.py` (+15 行)
 - `backend/README.md` (+180 行)
 
 ### 数据库文件
+
 - `backend/app/data/deep_sky.db` (5-10 MB, 13,318 天体)
 
 ### 总代码量
+
 - **新增代码**: ~2,500 行
 - **修改代码**: ~400 行
 - **测试代码**: ~200 行

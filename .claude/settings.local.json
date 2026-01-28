@@ -22,7 +22,11 @@
       "Bash(curl:*)",
       "Bash(sqlite3:*)",
       "Bash(/bin/bash:*)",
-      "Skill(superpowers:requesting-code-review)"
+      "Skill(superpowers:requesting-code-review)",
+      "mcp__pencil__batch_design",
+      "mcp__pencil__get_screenshot",
+      "Bash(source:*)",
+      "Bash(npm run dev:*)"
     ]
   }
 }
