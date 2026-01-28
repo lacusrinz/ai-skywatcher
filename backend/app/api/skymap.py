@@ -5,11 +5,13 @@ from typing import Optional, List
 from app.services.astronomy import AstronomyService
 from app.services.database import DatabaseService
 from app.services.model_adapter import ModelAdapter
+from app.services.mock_data import MockDataService
 
 router = APIRouter()
 astronomy_service = AstronomyService()
 db_service = DatabaseService()
 model_adapter = ModelAdapter()
+mock_service = MockDataService()
 
 
 @router.post("/data")
@@ -144,9 +146,8 @@ async def get_sky_map_timeline(request: dict) -> dict:
                 # 计算每个目标在此时刻的位置
                 positions = []
                 for target_id in target_ids:
-                    db_obj = await db_service.get_object_by_id(target_id)
-                    if db_obj:
-                        target = model_adapter.to_target(db_obj)
+                    target = mock_service.get_target_by_id(target_id)
+                    if target:
                         alt, az = astronomy_service.calculate_position(
                             target.ra,
                             target.dec,
