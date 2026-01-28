@@ -3,11 +3,13 @@ from fastapi import APIRouter, HTTPException
 from datetime import datetime
 from typing import Optional, List
 from app.services.astronomy import AstronomyService
-from app.services.mock_data import MockDataService
+from app.services.database import DatabaseService
+from app.services.model_adapter import ModelAdapter
 
 router = APIRouter()
 astronomy_service = AstronomyService()
-mock_service = MockDataService()
+db_service = DatabaseService()
+model_adapter = ModelAdapter()
 
 
 @router.post("/data")
@@ -46,14 +48,28 @@ async def get_sky_map_data(request: dict) -> dict:
 
         # 如果需要包含目标
         if include_targets:
-            # 获取所有目标
-            targets = mock_service.load_targets()
-
-            # 过滤类型
+            # Load targets from database based on type filters
             if target_types:
-                targets = [t for t in targets if t.type in target_types]
+                # Load specific types
+                all_db_objects = []
+                for obj_type in target_types:
+                    # Normalize API type to database type (galaxy -> GALAXY)
+                    db_type = obj_type.upper()
+                    objects = await db_service.get_objects_by_type(db_type)
+                    all_db_objects.extend(objects)
+                # Limit to prevent overwhelming response
+                all_db_objects = all_db_objects[:500]
+            else:
+                # Load sample objects from each type (500 each)
+                all_db_objects = []
+                for obj_type in ["GALAXY", "NEBULA", "CLUSTER"]:
+                    objects = await db_service.get_objects_by_type(obj_type)
+                    all_db_objects.extend(objects[:500])
 
-            # 计算每个目标的位置
+            # Convert database models to API models
+            targets = [model_adapter.to_target(obj) for obj in all_db_objects]
+
+            # Calculate position for each target
             targets_with_position = []
             for target in targets:
                 try:
@@ -65,9 +81,8 @@ async def get_sky_map_data(request: dict) -> dict:
                         timestamp
                     )
 
-                    # 只包含在地平线以上的目标
+                    # Only include targets above horizon
                     if alt > 0:
-                        # 根据类型设置颜色
                         color_map = {
                             "emission-nebula": "#FF6B6B",
                             "galaxy": "#FFB86C",
@@ -129,8 +144,9 @@ async def get_sky_map_timeline(request: dict) -> dict:
                 # 计算每个目标在此时刻的位置
                 positions = []
                 for target_id in target_ids:
-                    target = mock_service.get_target_by_id(target_id)
-                    if target:
+                    db_obj = await db_service.get_object_by_id(target_id)
+                    if db_obj:
+                        target = model_adapter.to_target(db_obj)
                         alt, az = astronomy_service.calculate_position(
                             target.ra,
                             target.dec,
