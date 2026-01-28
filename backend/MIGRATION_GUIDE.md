@@ -18,6 +18,25 @@
 - Filter support by type, magnitude
 - Loads 1,500 sample objects when no filters specified
 
+### ✅ Skymap API (2025-01-28)
+- Migrated from MockDataService to DatabaseService
+- `/data` endpoint loads 841+ real objects from database
+- `/timeline` endpoint works with all NGC/IC objects
+- Replaced 10 mock objects with real astronomical data
+
+### All APIs Migrated ✅
+
+**Status:** All APIs now use real database
+
+**Completed:** 2025-01-28
+
+**Summary:**
+- Visibility API: Migrated to DatabaseService + ModelAdapter
+- Recommendations API: Migrated to DatabaseService + ModelAdapter
+- Skymap API: Migrated to DatabaseService + ModelAdapter
+
+**Result:** No more MockDataService usage in production APIs
+
 ## Model Conversion
 
 The `ModelAdapter` service converts between:
