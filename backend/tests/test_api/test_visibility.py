@@ -54,3 +54,27 @@ async def test_batch_positions_with_real_db():
     data = response.json()
     assert data["success"] is True
     assert len(data["data"]["positions"]) > 0
+
+@pytest.mark.asyncio
+async def test_calculate_visibility_windows():
+    """Test visibility windows calculation with real database"""
+    response = client.post(
+        "/api/v1/visibility/windows",
+        json={
+            "target_id": "NGC0224",
+            "location": {"latitude": 39.9, "longitude": 116.4},
+            "date": "2025-01-28",
+            "visible_zones": [
+                {
+                    "id": "zone_0",
+                    "name": "Zone 0",
+                    "polygon": [[0, 0], [1, 0], [1, 1], [0, 1]],
+                    "priority": 1
+                }
+            ]
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert "windows" in data["data"]
