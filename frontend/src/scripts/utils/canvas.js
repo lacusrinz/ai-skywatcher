@@ -41,6 +41,16 @@ export class SkyMapCanvas {
         isVisible: true,
         isSelected: false,
         isDragging: false
+      },
+      // 月球状态
+      moon: {
+        position: null,  // { azimuth, altitude, distance, ra, dec }
+        phase: null,     // { name, percentage, age_days }
+        visible: false,
+        hovered: false,
+        selected: false,
+        showHeatmap: false,
+        heatmapData: null  // { grid: [[{alt, az, pollution}]], resolution }
       }
     };
 
@@ -248,6 +258,7 @@ export class SkyMapCanvas {
     this.drawHorizon();
     this.drawVisibleZones();  // 绘制可视区域
     this.drawFOVFrame();      // 绘制 FOV 框
+    this.drawMoon();
     this.drawTargets();
     this.drawCompass();
   }
@@ -522,6 +533,18 @@ export class SkyMapCanvas {
   handleHover(mouseX, mouseY) {
     let found = null;
 
+    // 优先检测月球悬停
+    if (this.state.moon.visible && this.state.moon.position) {
+      if (this.isPointOnMoon(mouseX, mouseY)) {
+        this.state.moon.hovered = true;
+        this.canvas.style.cursor = 'pointer';
+        this.render();
+        return;
+      } else if (this.state.moon.hovered) {
+        this.state.moon.hovered = false;
+      }
+    }
+
     // 检测是否悬停在目标上
     for (const target of this.state.targets) {
       const pos = this.projectFromCenter(target.azimuth, target.altitude);
@@ -548,8 +571,19 @@ export class SkyMapCanvas {
   }
 
   handleClick(x, y) {
-    if (this.state.hoveredTarget && !this.state.isDragging) {
-      this.onTargetSelect?.(this.state.hoveredTarget);
+    if (!this.state.isDragging && !this.state.fovFrame.isDragging) {
+      // 优先检测月球点击
+      if (this.state.moon.visible && this.isPointOnMoon(x, y)) {
+        this.state.moon.selected = !this.state.moon.selected;
+        this.onMoonSelect?.(this.state.moon);
+        this.render();
+        return;
+      }
+
+      // 检测目标点击
+      if (this.state.hoveredTarget) {
+        this.onTargetSelect?.(this.state.hoveredTarget);
+      }
     }
   }
 
@@ -829,5 +863,232 @@ export class SkyMapCanvas {
     }
 
     return false;
+  }
+
+  /**
+   * 绘制月球
+   */
+  drawMoon() {
+    const { ctx } = this;
+    const { moon } = this.state;
+
+    // 如果没有月球数据或不可见，跳过
+    if (!moon.visible || !moon.position) return;
+
+    const pos = this.projectFromCenter(moon.position.azimuth, moon.position.altitude);
+
+    // 只渲染可见且在地平线以上的月球
+    if (!pos.visible || moon.position.altitude <= 0) return;
+
+    // 保存月球屏幕位置供后续使用
+    moon.screenX = pos.x;
+    moon.screenY = pos.y;
+
+    const baseSize = 20;
+    const size = Math.max(10, Math.min(40, baseSize * pos.scale * 0.2));
+    const isHovered = moon.hovered;
+    const isSelected = moon.selected;
+    const moonSize = isHovered || isSelected ? size * 1.3 : size;
+
+    // 绘制光晕效果
+    if (isHovered || isSelected) {
+      const gradient = ctx.createRadialGradient(
+        pos.x, pos.y, 0,
+        pos.x, pos.y, moonSize * 2.5
+      );
+      gradient.addColorStop(0, 'rgba(255, 255, 200, 0.5)');
+      gradient.addColorStop(1, 'rgba(255, 255, 200, 0)');
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, moonSize * 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 绘制月球本体（圆）
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, moonSize, 0, Math.PI * 2);
+
+    // 月球颜色（根据月相）
+    const illumination = moon.phase ? moon.phase.percentage / 100 : 50;
+    const brightness = Math.floor(180 + illumination * 75);
+    ctx.fillStyle = `rgb(${brightness}, ${brightness}, ${brightness - 30})`;
+    ctx.fill();
+
+    // 绘制月球边框
+    ctx.strokeStyle = isSelected ? '#FFFFFF' : `rgb(${brightness - 30}, ${brightness - 30}, ${brightness - 60})`;
+    ctx.lineWidth = isSelected ? 3 : 1;
+    ctx.stroke();
+
+    // 绘制月相（新月显示为月牙，满月显示为满圆）
+    if (moon.phase) {
+      this.drawMoonPhase(ctx, pos.x, pos.y, moonSize, moon.phase);
+    }
+
+    // 绘制月球标签
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = isHovered || isSelected ? 'bold 13px sans-serif' : '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('月球', pos.x, pos.y - moonSize - 4);
+
+    // 悬停或选中时显示详细信息
+    if (isHovered || isSelected) {
+      this.drawMoonTooltip(ctx, pos, moonSize, moon);
+    }
+  }
+
+  /**
+   * 绘制月相
+   * @param {CanvasRenderingContext2D} ctx - Canvas context
+   * @param {number} x - Center X
+   * @param {number} y - Center Y
+   * @param {number} size - Moon radius
+   * @param {Object} phase - Phase data { name, percentage, age_days }
+   */
+  drawMoonPhase(ctx, x, y, size, phase) {
+    const percentage = phase.percentage;
+
+    // 新月到上弦月（右侧亮）
+    if (percentage < 50) {
+      this.drawMoonCrescent(ctx, x, y, size, percentage, 'right');
+    }
+    // 上弦月到满月（右侧全亮，左侧逐渐变亮）
+    else if (percentage === 50) {
+      // 上弦月：右半圆亮
+      ctx.beginPath();
+      ctx.arc(x, y, size, -Math.PI / 2, Math.PI / 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.fill();
+    }
+    // 满月（全亮）
+    else if (percentage === 100) {
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.fill();
+    }
+    // 满月到下弦月（左侧逐渐变暗）
+    else if (percentage > 50 && percentage < 100) {
+      const darkness = (percentage - 50) / 50; // 0 to 1
+      ctx.beginPath();
+      ctx.arc(x, y, size, Math.PI / 2, -Math.PI / 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.fill();
+
+      // 左侧阴影
+      ctx.beginPath();
+      ctx.arc(x + size * darkness, y, size, -Math.PI / 2, Math.PI / 2);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.fill();
+    }
+    // 下弦月到新月（左侧亮）
+    else {
+      this.drawMoonCrescent(ctx, x, y, size, 100 - percentage, 'left');
+    }
+  }
+
+  /**
+   * 绘制月牙（新月或残月）
+   * @param {CanvasRenderingContext2D} ctx - Canvas context
+   * @param {number} x - Center X
+   * @param {number} y - Center Y
+   * @param {number} size - Moon radius
+   * @param {number} percentage - Illumination percentage (0-50)
+   * @param {string} side - 'right' or 'left'
+   */
+  drawMoonCrescent(ctx, x, y, size, percentage, side) {
+    const offset = size * (1 - percentage / 50);
+
+    ctx.save();
+
+    // 创建月球剪切路径
+    ctx.beginPath();
+    ctx.arc(x, y, size, 0, Math.PI * 2);
+    ctx.clip();
+
+    // 绘制亮部
+    ctx.beginPath();
+    if (side === 'right') {
+      ctx.arc(x, y, size, -Math.PI / 2, Math.PI / 2);
+      ctx.arc(x + offset, y, size, Math.PI / 2, -Math.PI / 2);
+    } else {
+      ctx.arc(x, y, size, Math.PI / 2, -Math.PI / 2);
+      ctx.arc(x - offset, y, size, -Math.PI / 2, Math.PI / 2);
+    }
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  /**
+   * 绘制月球提示框
+   * @param {CanvasRenderingContext2D} ctx - Canvas context
+   * @param {Object} pos - Projected position { x, y, z, visible, scale }
+   * @param {number} size - Moon size
+   * @param {Object} moon - Moon state
+   */
+  drawMoonTooltip(ctx, pos, size, moon) {
+    const infoY = pos.y + size + 8;
+    const lineHeight = 14;
+
+    // 半透明背景
+    const padding = 8;
+    const boxWidth = 140;
+    const boxHeight = moon.phase ? lineHeight * 4 + padding * 2 : lineHeight * 3 + padding * 2;
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(pos.x - boxWidth / 2, infoY, boxWidth, boxHeight);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(pos.x - boxWidth / 2, infoY, boxWidth, boxHeight);
+
+    // 绘制信息
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+
+    let y = infoY + padding;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText(`高度: ${moon.position.altitude.toFixed(1)}°`, pos.x, y);
+    y += lineHeight;
+
+    ctx.fillText(`方位: ${moon.position.azimuth.toFixed(1)}°`, pos.x, y);
+    y += lineHeight;
+
+    if (moon.phase) {
+      ctx.fillStyle = '#FFD700';
+      ctx.fillText(`${moon.phase.name} (${moon.phase.percentage.toFixed(0)}%)`, pos.x, y);
+      y += lineHeight;
+    }
+
+    ctx.fillStyle = '#94A3B8';
+    ctx.font = '10px sans-serif';
+    const distance = (moon.position.distance || 384400).toFixed(0);
+    ctx.fillText(`距离: ${Number(distance).toLocaleString()} km`, pos.x, y);
+  }
+
+  /**
+   * 检测点是否在月球上
+   * @param {number} x - Screen X
+   * @param {number} y - Screen Y
+   * @returns {boolean}
+   */
+  isPointOnMoon(x, y) {
+    const { moon } = this.state;
+
+    if (!moon.visible || !moon.position || moon.screenX === undefined) return false;
+
+    const baseSize = 20;
+    const pos = this.projectFromCenter(moon.position.azimuth, moon.position.altitude);
+    const size = Math.max(10, Math.min(40, baseSize * pos.scale * 0.2));
+    const moonSize = moon.hovered || moon.selected ? size * 1.3 : size;
+
+    const distance = Math.sqrt(
+      Math.pow(x - moon.screenX, 2) +
+      Math.pow(y - moon.screenY, 2)
+    );
+
+    return distance < moonSize + 5;
   }
 }
