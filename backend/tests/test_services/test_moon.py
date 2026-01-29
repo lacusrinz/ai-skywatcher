@@ -45,3 +45,25 @@ def test_get_moon_position_reasonable_values(moon_service):
     assert 0 <= result['azimuth'] <= 360
     # Distance: ~360,000-400,000 km
     assert 360000 <= result['distance'] <= 400000
+
+def test_get_moon_phase_returns_dict(moon_service):
+    """Test that get_moon_phase returns correct structure"""
+    result = moon_service.get_moon_phase(datetime(2025, 1, 29, 20, 0, 0))
+
+    assert isinstance(result, dict)
+    assert 'percentage' in result
+    assert 'age_days' in result
+    assert 'illumination' in result
+    assert 'name' in result
+    assert 0 <= result['percentage'] <= 100
+    assert 0 <= result['age_days'] <= 29.53
+    assert 0 <= result['illumination'] <= 1
+
+def test_get_moon_phase_known_values(moon_service):
+    """Test with known moon phase (full moon)"""
+    # January 29, 2025 was near full moon (99.8%)
+    result = moon_service.get_moon_phase(datetime(2025, 1, 29, 20, 0, 0))
+
+    # Should be near full moon (95-100%)
+    assert 95 <= result['percentage'] <= 100
+    assert result['name'] in ['满月', '盈凸月']
