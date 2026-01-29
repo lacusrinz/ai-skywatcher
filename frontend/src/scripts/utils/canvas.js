@@ -258,6 +258,7 @@ export class SkyMapCanvas {
     this.drawHorizon();
     this.drawVisibleZones();  // 绘制可视区域
     this.drawFOVFrame();      // 绘制 FOV 框
+    this.drawMoonlightPollutionHeatmap();  // 绘制月光污染热力图
     this.drawMoon();
     this.drawTargets();
     this.drawCompass();
@@ -1090,5 +1091,164 @@ export class SkyMapCanvas {
     );
 
     return distance < moonSize + 5;
+  }
+
+  /**
+   * 绘制月光污染热力图
+   */
+  drawMoonlightPollutionHeatmap() {
+    const { ctx } = this;
+    const { moon } = this.state;
+
+    // 如果没有启用热力图或没有数据，跳过
+    if (!moon.showHeatmap || !moon.heatmapData || !moon.heatmapData.grid) return;
+
+    const heatmapGrid = moon.heatmapData.grid;
+    const resolution = moon.heatmapData.resolution || 36;
+
+    // 绘制热力图网格
+    for (let altIdx = 0; altIdx < heatmapGrid.length; altIdx++) {
+      for (let azIdx = 0; azIdx < heatmapGrid[altIdx].length; azIdx++) {
+        const cell = heatmapGrid[altIdx][azIdx];
+
+        // 跳过无效数据
+        if (!cell || cell.pollution === undefined || cell.pollution === null) continue;
+
+        const pos = this.projectFromCenter(cell.az, cell.alt);
+
+        // 只渲染可见且在地平线以上的区域
+        if (!pos.visible || cell.alt <= 0) continue;
+
+        // 获取污染颜色
+        const color = this.getPollutionColor(cell.pollution);
+
+        // 绘制半透明热力点
+        const baseSize = 15;
+        const size = Math.max(3, Math.min(20, baseSize * pos.scale * 0.15));
+
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, size, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+      }
+    }
+
+    // 绘制热力图图例
+    this.drawHeatmapLegend();
+  }
+
+  /**
+   * 获取月光污染颜色
+   * @param {number} pollution - 污染等级 (0-1)
+   * @returns {string} RGBA color
+   */
+  getPollutionColor(pollution) {
+    // 污染等级到颜色的映射
+    // 0.0-0.1: 绿色 (无影响/轻微)
+    // 0.1-0.3: 黄色 (轻微)
+    // 0.3-0.5: 橙色 (中等)
+    // 0.5-0.7: 红色 (严重)
+    // 0.7-1.0: 深红色 (极严重)
+
+    let r, g, b, a;
+
+    if (pollution <= 0.1) {
+      // 绿色到黄绿色
+      const t = pollution / 0.1;
+      r = Math.floor(34 + t * (250 - 34));
+      g = Math.floor(197 + t * (204 - 197));
+      b = Math.floor(94 + t * (21 - 94));
+      a = 0.3 + t * 0.2;
+    } else if (pollution <= 0.3) {
+      // 黄绿色到黄色
+      const t = (pollution - 0.1) / 0.2;
+      r = Math.floor(250 + t * (255 - 250));
+      g = Math.floor(204 + t * (235 - 204));
+      b = Math.floor(21 + t * (59 - 21));
+      a = 0.5 + t * 0.1;
+    } else if (pollution <= 0.5) {
+      // 黄色到橙色
+      const t = (pollution - 0.3) / 0.2;
+      r = Math.floor(255 + t * (249 - 255));
+      g = Math.floor(235 + t * (115 - 235));
+      b = Math.floor(59 + t * (22 - 59));
+      a = 0.6;
+    } else if (pollution <= 0.7) {
+      // 橙色到红色
+      const t = (pollution - 0.5) / 0.2;
+      r = Math.floor(249 + t * (239 - 249));
+      g = Math.floor(115 + t * (68 - 115));
+      b = Math.floor(22 + t * (68 - 22));
+      a = 0.6 + t * 0.1;
+    } else {
+      // 红色到深红色
+      const t = Math.min(1, (pollution - 0.7) / 0.3);
+      r = Math.floor(239 - t * (239 - 127));
+      g = Math.floor(68 - t * (68 - 29));
+      b = Math.floor(68 - t * (68 - 29));
+      a = 0.7;
+    }
+
+    return `rgba(${r}, ${g}, ${b}, ${a.toFixed(2)})`;
+  }
+
+  /**
+   * 绘制热力图图例
+   */
+  drawHeatmapLegend() {
+    const { ctx, config } = this;
+
+    const legendX = config.width - 160;
+    const legendY = config.height - 120;
+    const legendWidth = 140;
+    const legendHeight = 100;
+
+    // 背景
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(legendX, legendY, legendWidth, legendHeight);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(legendX, legendY, legendWidth, legendHeight);
+
+    // 标题
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('月光污染等级', legendX + 10, legendY + 10);
+
+    // 渐变条
+    const gradientX = legendX + 10;
+    const gradientY = legendY + 35;
+    const gradientWidth = 120;
+    const gradientHeight = 15;
+
+    const gradient = ctx.createLinearGradient(gradientX, 0, gradientX + gradientWidth, 0);
+    gradient.addColorStop(0, 'rgba(34, 197, 94, 0.7)');      // 绿色
+    gradient.addColorStop(0.25, 'rgba(250, 204, 21, 0.7)');   // 黄色
+    gradient.addColorStop(0.5, 'rgba(249, 115, 22, 0.7)');    // 橙色
+    gradient.addColorStop(0.75, 'rgba(239, 68, 68, 0.7)');     // 红色
+    gradient.addColorStop(1, 'rgba(127, 29, 29, 0.7)');       // 深红色
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(gradientX, gradientY, gradientWidth, gradientHeight);
+
+    // 标签
+    ctx.font = '10px sans-serif';
+    ctx.fillStyle = '#94A3B8';
+
+    const labels = [
+      { text: '无影响', x: gradientX },
+      { text: '轻微', x: gradientX + gradientWidth * 0.25 },
+      { text: '中等', x: gradientX + gradientWidth * 0.5 },
+      { text: '严重', x: gradientX + gradientWidth * 0.75 },
+      { text: '极严重', x: gradientX + gradientWidth }
+    ];
+
+    labels.forEach(label => {
+      ctx.textAlign = label.x === gradientX ? 'left' :
+                     label.x === gradientX + gradientWidth ? 'right' : 'center';
+      ctx.fillText(label.text, label.x, gradientY + gradientHeight + 5);
+    });
   }
 }
