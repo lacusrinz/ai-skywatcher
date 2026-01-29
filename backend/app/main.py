@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-from app.api import locations, equipment, targets, visibility, recommendations, skymap
+from app.api import locations, equipment, targets, visibility, recommendations, skymap, moon
 from app.config import settings
 
 app = FastAPI(
@@ -62,6 +62,12 @@ app.include_router(
     skymap.router,
     prefix="/api/v1/sky-map",
     tags=["sky-map"]
+)
+
+app.include_router(
+    moon.router,
+    prefix="/api/v1/moon",
+    tags=["moon"]
 )
 
 
