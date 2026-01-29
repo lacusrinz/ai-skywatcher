@@ -66,8 +66,19 @@ function initApp() {
       // TODO: Scroll to target card in recommend panel
     };
 
+    // Set moon toggle callback
+    skyMap.onMoonToggle = (showHeatmap) => {
+      console.log('Moon heatmap toggled:', showHeatmap);
+      if (showHeatmap) {
+        loadMoonHeatmap();
+      }
+    };
+
     // Load initial sky map data
     loadSkyMapData();
+
+    // Load initial moon data
+    loadMoonData();
   }
 
   // Load initial recommendations
@@ -88,6 +99,9 @@ function initApp() {
 
   // Start clock
   startClock();
+
+  // Set up moon data updates every 5 minutes
+  setInterval(loadMoonData, 5 * 60 * 1000);
 
   console.log('AI Skywatcher initialized');
 }
@@ -343,6 +357,64 @@ async function loadSkyMapData() {
     }
   } catch (error) {
     console.error('Failed to load sky map data:', error);
+  }
+}
+
+// Load Moon Data
+async function loadMoonData() {
+  try {
+    const now = new Date();
+
+    const data = await API.getMoonPosition({
+      location: currentLocation,
+      timestamp: now.toISOString()
+    });
+
+    if (skyMap && data.position) {
+      skyMap.updateData({
+        moon: {
+          position: {
+            azimuth: data.position.azimuth,
+            altitude: data.position.altitude,
+            distance: data.position.distance,
+            ra: data.position.ra,
+            dec: data.position.dec
+          },
+          phase: data.phase,
+          visible: data.position.altitude > 0
+        }
+      });
+    }
+
+    console.log('Moon data loaded:', data);
+  } catch (error) {
+    console.error('Failed to load moon data:', error);
+  }
+}
+
+// Load Moon Heatmap
+async function loadMoonHeatmap() {
+  try {
+    const now = new Date();
+
+    const data = await API.getMoonHeatmap({
+      location: currentLocation,
+      timestamp: now.toISOString(),
+      resolution: 36
+    });
+
+    if (skyMap && data.heatmap) {
+      skyMap.updateData({
+        moon: {
+          showHeatmap: true,
+          heatmapData: data.heatmap
+        }
+      });
+    }
+
+    console.log('Moon heatmap loaded');
+  } catch (error) {
+    console.error('Failed to load moon heatmap:', error);
   }
 }
 

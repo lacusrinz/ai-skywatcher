@@ -187,6 +187,28 @@ const API = {
       method: 'POST',
       body: JSON.stringify(params)
     });
+  },
+
+  // Moon
+  async getMoonPosition(params) {
+    return this.request('/moon/position', {
+      method: 'POST',
+      body: JSON.stringify(params)
+    });
+  },
+
+  async getMoonHeatmap(params) {
+    return this.request('/moon/heatmap', {
+      method: 'POST',
+      body: JSON.stringify(params)
+    });
+  },
+
+  async getMoonPollution(params) {
+    return this.request('/moon/pollution', {
+      method: 'POST',
+      body: JSON.stringify(params)
+    });
   }
 };
 
