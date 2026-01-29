@@ -205,3 +205,61 @@ class MoonService:
         pollution = phase_brightness * altitude_factor * scatter_decay
 
         return min(1.0, max(0.0, pollution))
+
+    def get_pollution_heatmap(
+        self,
+        observer_lat: float,
+        observer_lon: float,
+        timestamp: datetime,
+        resolution: int = 36
+    ) -> list:
+        """
+        Generate moonlight pollution heatmap grid
+
+        Args:
+            observer_lat: Observer latitude in degrees
+            observer_lon: Observer longitude in degrees
+            timestamp: Observation time
+            resolution: Grid resolution (default 36 = 36x36 = 1296 points)
+
+        Returns:
+            List of dicts with:
+                - azimuth: Azimuth angle (degrees)
+                - altitude: Altitude angle (degrees)
+                - pollution: Pollution level (0-1)
+        """
+        # Get moon data
+        moon_pos = self.get_moon_position(observer_lat, observer_lon, timestamp)
+        moon_phase = self.get_moon_phase(timestamp)
+
+        # Generate grid
+        grid = []
+        azimuth_step = 360 / resolution
+        altitude_step = 90 / resolution
+
+        for az_idx in range(resolution):
+            azimuth = az_idx * azimuth_step
+
+            for alt_idx in range(resolution):
+                altitude = alt_idx * altitude_step
+
+                # Skip points below horizon
+                if altitude < 0:
+                    continue
+
+                # Calculate pollution at this point
+                pollution = self.calculate_light_pollution(
+                    moon_pos['altitude'],
+                    moon_pos['azimuth'],
+                    moon_phase['percentage'],
+                    altitude,
+                    azimuth
+                )
+
+                grid.append({
+                    'azimuth': round(azimuth, 2),
+                    'altitude': round(altitude, 2),
+                    'pollution': round(pollution, 4)
+                })
+
+        return grid

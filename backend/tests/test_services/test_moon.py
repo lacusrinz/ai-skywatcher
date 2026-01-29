@@ -130,3 +130,40 @@ def test_calculate_light_pollution_far_angular_distance(moon_service):
     )
 
     assert result_close > result_far
+
+def test_get_pollution_heatmap_returns_list(moon_service):
+    """Test that heatmap returns list of points"""
+    result = moon_service.get_pollution_heatmap(
+        observer_lat=40.7128,
+        observer_lon=-74.0060,
+        timestamp=datetime(2025, 1, 29, 20, 0, 0),
+        resolution=10  # Small grid for testing
+    )
+
+    assert isinstance(result, list)
+    assert len(result) == 100  # 10x10 grid
+
+    # Check first point structure
+    point = result[0]
+    assert 'azimuth' in point
+    assert 'altitude' in point
+    assert 'pollution' in point
+    assert 0 <= point['pollution'] <= 1
+
+def test_get_pollution_heatmap_coverages_sky(moon_service):
+    """Test that heatmap covers full sky"""
+    result = moon_service.get_pollution_heatmap(
+        observer_lat=40.7128,
+        observer_lon=-74.0060,
+        timestamp=datetime(2025, 1, 29, 20, 0, 0),
+        resolution=18  # 18x18 = 324 points
+    )
+
+    # Check coverage
+    azimuths = [p['azimuth'] for p in result]
+    altitudes = [p['altitude'] for p in result]
+
+    assert min(azimuths) >= 0
+    assert max(azimuths) <= 360
+    assert min(altitudes) >= 0
+    assert max(altitudes) <= 90
