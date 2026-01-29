@@ -60,13 +60,13 @@ def test_get_moon_phase_returns_dict(moon_service):
     assert 0 <= result['illumination'] <= 1
 
 def test_get_moon_phase_known_values(moon_service):
-    """Test with known moon phase (full moon)"""
-    # January 29, 2025 was near full moon (99.8%)
+    """Test with known moon phase (new moon)"""
+    # January 29, 2025 was new moon (around 0-5%)
     result = moon_service.get_moon_phase(datetime(2025, 1, 29, 20, 0, 0))
 
-    # Should be near full moon (95-100%)
-    assert 95 <= result['percentage'] <= 100
-    assert result['name'] in ['满月', '盈凸月']
+    # Should be near new moon (0-10%)
+    assert 0 <= result['percentage'] <= 10
+    assert result['name'] in ['新月', '娥眉月']
 
 import math
 

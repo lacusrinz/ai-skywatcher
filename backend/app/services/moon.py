@@ -1,5 +1,5 @@
 # backend/app/services/moon.py
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict
 from skyfield.api import load, Topos, utc
 import logging
@@ -95,38 +95,64 @@ class MoonService:
         ts = load.timescale()
         t = ts.from_datetime(timestamp)
 
-        # Get moon position relative to earth
-        astrometric = self.earth.at(t).observe(self.moon)
-        _, _, distance = astrometric.apparent().radec()
-
-        # Calculate phase angle
+        # Calculate moon phase angle using Skyfield's method
+        # The phase angle is the angle Sun-Moon-Earth
+        # When phase_angle = 0°: Full moon (moon fully illuminated as seen from earth)
+        # When phase_angle = 180°: New moon (moon not illuminated as seen from earth)
         sun = self.ephemeris['sun']
-        sun_astrometric = self.earth.at(t).observe(sun)
-        moon_astrometric = self.earth.at(t).observe(self.moon)
+        earth = self.earth
+        moon = self.moon
 
         # Get positions
-        sun_pos = sun_astrometric.position.au[0:2]  # x, y
-        moon_pos = moon_astrometric.position.au[0:2]
+        earth_at_t = earth.at(t)
+        sun_from_earth = earth_at_t.observe(sun).apparent()
+        moon_from_earth = earth_at_t.observe(moon).apparent()
 
-        # Calculate angle between sun and moon as seen from earth
-        sun_angle = np.arctan2(sun_pos[1], sun_pos[0])
-        moon_angle = np.arctan2(moon_pos[1], moon_pos[0])
+        # Calculate phase angle (angle at moon between sun and earth)
+        # This is the Sun-Moon-Earth angle
+        _, _, distance_moon = moon_from_earth.radec()
+        _, _, distance_sun = sun_from_earth.radec()
 
-        phase_angle = (moon_angle - sun_angle) % (2 * np.pi)
+        # Use the moon's phase attribute from Skyfield
+        # This gives us the illuminated fraction directly
+        astrometric_moon = earth.at(t).observe(self.moon)
+        phase_angle = astrometric_moon.phase_angle(self.ephemeris['sun'])
 
-        # Phase percentage (0-100)
-        percentage = (1 + np.cos(phase_angle)) / 2 * 100
-
-        # Illuminated fraction
-        illumination = (1 + np.cos(phase_angle)) / 2
+        # Convert phase angle to illumination percentage
+        # phase_angle = 0° → full moon (100%)
+        # phase_angle = 180° → new moon (0%)
+        phase_angle_degrees = phase_angle.degrees % 360
+        illumination = (1 + np.cos(np.radians(phase_angle_degrees))) / 2
+        percentage = illumination * 100
 
         # Calculate moon age (days since new moon)
-        # Synodic month is approximately 29.53 days
+        # Use time-based method to determine waxing vs waning
         synodic_month = 29.53
-        age_days = (percentage / 100) * synodic_month
 
-        # Determine phase name
-        phase_name = self._get_phase_name(percentage)
+        # Check phase angle 24 hours ago to determine if waxing or waning
+        t_yesterday = ts.from_datetime(timestamp.replace(tzinfo=utc) - timedelta(hours=24))
+        astrometric_yesterday = earth.at(t_yesterday).observe(self.moon)
+        phase_angle_yesterday = astrometric_yesterday.phase_angle(self.ephemeris['sun'])
+        phase_angle_yesterday_degrees = phase_angle_yesterday.degrees % 360
+
+        # If phase angle is increasing, we're waxing (approaching full moon)
+        # If phase angle is decreasing, we're waning (approaching new moon)
+        # But we need to account for wraparound at 360°
+        delta = (phase_angle_degrees - phase_angle_yesterday_degrees) % 360
+        if delta > 180:
+            delta -= 360  # Normalize to -180 to 180 range
+
+        is_waning = delta < 0  # Phase angle decreasing means waning
+
+        if not is_waning:
+            # Waxing: new moon (0%) → full moon (100%)
+            age_days = (percentage / 100) * (synodic_month / 2)
+        else:
+            # Waning: full moon (100%) → new moon (0%)
+            age_days = (synodic_month / 2) + ((100 - percentage) / 100) * (synodic_month / 2)
+
+        # Determine phase name with waxing/waning info
+        phase_name = self._get_phase_name(percentage, is_waning)
 
         return {
             'percentage': round(percentage, 2),
@@ -135,26 +161,18 @@ class MoonService:
             'name': phase_name
         }
 
-    def _get_phase_name(self, percentage: float) -> str:
-        """Get Chinese phase name from percentage"""
+    def _get_phase_name(self, percentage: float, is_waning: bool) -> str:
+        """Get Chinese phase name from percentage and waning state"""
         if percentage < 5:
             return "新月"
         elif percentage < 45:
-            return "娥眉月"
+            return "娥眉月" if not is_waning else "残月"
         elif percentage < 55:
-            return "上弦月"
+            return "上弦月" if not is_waning else "下弦月"
         elif percentage < 95:
-            return "盈凸月"
-        elif percentage <= 100:
+            return "盈凸月" if not is_waning else "亏凸月"
+        else:  # 95-100%
             return "满月"
-        elif percentage > 95:
-            return "满月"  # Just past full
-        elif percentage > 55:
-            return "亏凸月"
-        elif percentage > 45:
-            return "下弦月"
-        else:
-            return "残月"
 
     def calculate_light_pollution(
         self,

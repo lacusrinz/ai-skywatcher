@@ -201,6 +201,9 @@ function handleLocationSelectChange(e) {
 
       // Reload recommendations with new location
       loadRecommendations('tonight-golden');
+
+      // Reload sky map and moon data with new location
+      loadSkyMapData();
     }
   }
 
@@ -269,6 +272,9 @@ function handleLocationInput() {
 
   // Update save/delete buttons
   updateLocationButtons();
+
+  // Reload sky map and moon data with new location
+  loadSkyMapData();
 
   console.log('Location manually updated:', { lat, lng });
 }
@@ -355,19 +361,22 @@ async function loadSkyMapData() {
 
       skyMap.updateData({ targets });
     }
+
+    // Update moon position for selected date
+    await loadMoonData(timestamp);
   } catch (error) {
     console.error('Failed to load sky map data:', error);
   }
 }
 
 // Load Moon Data
-async function loadMoonData() {
+async function loadMoonData(timestamp = null) {
   try {
-    const now = new Date();
+    const time = timestamp || new Date();
 
     const data = await API.getMoonPosition({
       location: currentLocation,
-      timestamp: now.toISOString()
+      timestamp: time.toISOString()
     });
 
     if (skyMap && data.position) {
@@ -393,13 +402,13 @@ async function loadMoonData() {
 }
 
 // Load Moon Heatmap
-async function loadMoonHeatmap() {
+async function loadMoonHeatmap(timestamp = null) {
   try {
-    const now = new Date();
+    const time = timestamp || new Date();
 
     const data = await API.getMoonHeatmap({
       location: currentLocation,
-      timestamp: now.toISOString(),
+      timestamp: time.toISOString(),
       resolution: 36
     });
 
@@ -1039,6 +1048,9 @@ function updateSkyMapForTime(hour, minute) {
 
         skyMap.updateData({ targets });
       }
+
+      // Update moon position for new time
+      await loadMoonData(timestamp);
     } catch (error) {
       console.error('Failed to update sky map for time:', error);
     }

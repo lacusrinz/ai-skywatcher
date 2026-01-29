@@ -16,7 +16,8 @@ async def get_moon_position(request: dict) -> dict:
     """
     获取月球位置
 
-    Returns moon position in both equatorial and horizontal coordinates.
+    Returns moon position in both equatorial and horizontal coordinates,
+    plus moon phase information.
     """
     try:
         location = request.get("location", {})
@@ -48,12 +49,16 @@ async def get_moon_position(request: dict) -> dict:
             timestamp=timestamp
         )
 
+        # Get moon phase
+        moon_phase = moon_service.get_moon_phase(timestamp)
+
         return {
             "success": True,
             "data": {
                 "timestamp": timestamp.isoformat(),
                 "location": location,
-                "position": moon_position
+                "position": moon_position,
+                "phase": moon_phase
             },
             "message": "获取月球位置成功"
         }

@@ -905,25 +905,17 @@ export class SkyMapCanvas {
       ctx.fill();
     }
 
-    // 绘制月球本体（圆）
-    ctx.beginPath();
-    ctx.arc(pos.x, pos.y, moonSize, 0, Math.PI * 2);
-
-    // 月球颜色（根据月相）
-    const illumination = moon.phase ? moon.phase.percentage / 100 : 50;
-    const brightness = Math.floor(180 + illumination * 75);
-    ctx.fillStyle = `rgb(${brightness}, ${brightness}, ${brightness - 30})`;
-    ctx.fill();
-
-    // 绘制月球边框
-    ctx.strokeStyle = isSelected ? '#FFFFFF' : `rgb(${brightness - 30}, ${brightness - 30}, ${brightness - 60})`;
-    ctx.lineWidth = isSelected ? 3 : 1;
-    ctx.stroke();
-
-    // 绘制月相（新月显示为月牙，满月显示为满圆）
+    // 绘制月相（包含底色和亮部）
     if (moon.phase) {
       this.drawMoonPhase(ctx, pos.x, pos.y, moonSize, moon.phase);
     }
+
+    // 绘制月球边框
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, moonSize, 0, Math.PI * 2);
+    ctx.strokeStyle = (isHovered || isSelected) ? '#FFFFFF' : 'rgb(150, 150, 155)';
+    ctx.lineWidth = (isHovered || isSelected) ? 3 : 1;
+    ctx.stroke();
 
     // 绘制月球标签
     ctx.fillStyle = '#FFFFFF';
@@ -948,43 +940,98 @@ export class SkyMapCanvas {
    */
   drawMoonPhase(ctx, x, y, size, phase) {
     const percentage = phase.percentage;
+    const name = phase.name;
 
-    // 新月到上弦月（右侧亮）
-    if (percentage < 50) {
-      this.drawMoonCrescent(ctx, x, y, size, percentage, 'right');
-    }
-    // 上弦月到满月（右侧全亮，左侧逐渐变亮）
-    else if (percentage === 50) {
-      // 上弦月：右半圆亮
-      ctx.beginPath();
-      ctx.arc(x, y, size, -Math.PI / 2, Math.PI / 2);
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-      ctx.fill();
-    }
-    // 满月（全亮）
-    else if (percentage === 100) {
+    // 先绘制暗色底色圆（所有月相都需要）
+    ctx.beginPath();
+    ctx.arc(x, y, size, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgb(60, 60, 65)';
+    ctx.fill();
+
+    // 满月（全亮）- 使用范围判断而非严格等于
+    if (percentage >= 99) {
       ctx.beginPath();
       ctx.arc(x, y, size, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
       ctx.fill();
     }
-    // 满月到下弦月（左侧逐渐变暗）
-    else if (percentage > 50 && percentage < 100) {
-      const darkness = (percentage - 50) / 50; // 0 to 1
+    // 亏凸月（满月到下弦月，左侧逐渐变暗）- 必须先判断！
+    else if (name === '亏凸月') {
+      // 计算阴影大小：从满月(无阴影)到下弦月(半圆阴影)
+      const shadowProgress = (percentage - 50) / 50; // 0 to 1
+
+      // 右侧全亮（从90°到-90°，即右半圆）
       ctx.beginPath();
       ctx.arc(x, y, size, Math.PI / 2, -Math.PI / 2);
       ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
       ctx.fill();
 
-      // 左侧阴影
+      // 左侧亮部（逐渐减小，从满月到下弦月）
+      ctx.save();
       ctx.beginPath();
-      ctx.arc(x + size * darkness, y, size, -Math.PI / 2, Math.PI / 2);
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.clip();
+
+      // 使用偏移圆弧来绘制左侧亮部
+      // shadowProgress = 0 (满月) → offset = size (左侧全亮)
+      // shadowProgress = 1 (下弦月) → offset = 0 (左侧不亮)
+      const offset = size * (1 - shadowProgress);
+      ctx.beginPath();
+      ctx.arc(x - size + offset, y, size, -Math.PI / 2, Math.PI / 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.fill();
+      ctx.restore();
+    }
+    // 盈凸月（上弦月到满月，右侧全亮，左侧逐渐变亮，50-99%）
+    else if (name === '盈凸月') {
+      const lightness = (percentage - 50) / 50; // 0 to 1
+
+      // 右侧全亮
+      ctx.beginPath();
+      ctx.arc(x, y, size, Math.PI / 2, -Math.PI / 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.fill();
+
+      // 左侧亮部（逐渐增大）
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.clip();
+
+      ctx.beginPath();
+      ctx.arc(x - size + (size * 2 * lightness), y, size, -Math.PI / 2, Math.PI / 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.fill();
+      ctx.restore();
+    }
+    // 新月到上弦月（右侧亮，0-50%）- 娥眉月
+    else if (percentage < 50 && (name === '娥眉月' || !name.includes('凸'))) {
+      this.drawMoonCrescent(ctx, x, y, size, percentage, 'right');
+    }
+    // 上弦月附近（45-55%，右半圆亮）
+    else if (percentage >= 45 && percentage < 55 && name === '上弦月') {
+      ctx.beginPath();
+      ctx.arc(x, y, size, -Math.PI / 2, Math.PI / 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
       ctx.fill();
     }
-    // 下弦月到新月（左侧亮）
-    else {
+    // 下弦月附近（45-55%，左半圆亮）
+    else if (percentage >= 45 && percentage < 55 && name === '下弦月') {
+      ctx.beginPath();
+      ctx.arc(x, y, size, Math.PI / 2, -Math.PI / 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.fill();
+    }
+    // 下弦月到新月（左侧亮，残月）
+    else if (name === '残月' || percentage < 50) {
       this.drawMoonCrescent(ctx, x, y, size, 100 - percentage, 'left');
+    }
+    // 兜底：其他情况绘制全亮
+    else {
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.fill();
     }
   }
 
