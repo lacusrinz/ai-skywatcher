@@ -67,3 +67,66 @@ def test_get_moon_phase_known_values(moon_service):
     # Should be near full moon (95-100%)
     assert 95 <= result['percentage'] <= 100
     assert result['name'] in ['满月', '盈凸月']
+
+import math
+
+def test_calculate_light_pollution_returns_value(moon_service):
+    """Test that pollution calculation returns 0-1"""
+    result = moon_service.calculate_light_pollution(
+        moon_altitude=45.0,
+        moon_azimuth=180.0,
+        moon_phase=50.0,
+        target_altitude=45.0,
+        target_azimuth=180.0
+    )
+
+    assert isinstance(result, float)
+    assert 0 <= result <= 1
+
+def test_calculate_light_pollution_full_moon_overhead(moon_service):
+    """Test full moon overhead gives high pollution"""
+    result = moon_service.calculate_light_pollution(
+        moon_altitude=80.0,
+        moon_azimuth=180.0,
+        moon_phase=100.0,  # Full moon
+        target_altitude=80.0,
+        target_azimuth=180.0
+    )
+
+    # Should be very high pollution
+    assert result > 0.8
+
+def test_calculate_light_pollution_new_moon(moon_service):
+    """Test new moon gives low pollution"""
+    result = moon_service.calculate_light_pollution(
+        moon_altitude=45.0,
+        moon_azimuth=180.0,
+        moon_phase=0.0,  # New moon
+        target_altitude=45.0,
+        target_azimuth=180.0
+    )
+
+    # Should be very low pollution
+    assert result < 0.1
+
+def test_calculate_light_pollution_far_angular_distance(moon_service):
+    """Test that far targets have less pollution"""
+    # Same position
+    result_close = moon_service.calculate_light_pollution(
+        moon_altitude=45.0,
+        moon_azimuth=180.0,
+        moon_phase=100.0,
+        target_altitude=45.0,
+        target_azimuth=180.0
+    )
+
+    # Far away (90 degrees difference)
+    result_far = moon_service.calculate_light_pollution(
+        moon_altitude=45.0,
+        moon_azimuth=90.0,
+        moon_phase=100.0,
+        target_altitude=45.0,
+        target_azimuth=180.0
+    )
+
+    assert result_close > result_far

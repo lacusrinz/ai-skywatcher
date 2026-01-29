@@ -4,6 +4,7 @@ from typing import Dict
 from skyfield.api import load, Topos, utc
 import logging
 import numpy as np
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -154,3 +155,53 @@ class MoonService:
             return "下弦月"
         else:
             return "残月"
+
+    def calculate_light_pollution(
+        self,
+        moon_altitude: float,
+        moon_azimuth: float,
+        moon_phase: float,
+        target_altitude: float,
+        target_azimuth: float
+    ) -> float:
+        """
+        Calculate moonlight pollution at target position
+
+        Args:
+            moon_altitude: Moon altitude in degrees
+            moon_azimuth: Moon azimuth in degrees
+            moon_phase: Moon phase percentage (0-100)
+            target_altitude: Target altitude in degrees
+            target_azimuth: Target azimuth in degrees
+
+        Returns:
+            Pollution level (0-1, where 0=no pollution, 1=severe pollution)
+        """
+        # Convert to radians
+        moon_alt_rad = math.radians(moon_altitude)
+        moon_az_rad = math.radians(moon_azimuth)
+        target_alt_rad = math.radians(target_altitude)
+        target_az_rad = math.radians(target_azimuth)
+
+        # 1. Calculate angular distance using spherical law of cosines
+        angular_distance = math.acos(
+            math.sin(moon_alt_rad) * math.sin(target_alt_rad) +
+            math.cos(moon_alt_rad) * math.cos(target_alt_rad) *
+            math.cos(moon_az_rad - target_az_rad)
+        )
+        angular_distance_deg = math.degrees(angular_distance)
+
+        # 2. Moon phase brightness factor (full moon=1.0, new moon=0.01)
+        phase_brightness = (moon_phase / 100) ** 2 * 0.99 + 0.01
+
+        # 3. Moon altitude factor (higher moon = more impact)
+        altitude_factor = max(0, math.sin(moon_alt_rad))
+
+        # 4. Scatter decay (exponential decay with angular distance)
+        # 30-degree half-decay angle
+        scatter_decay = math.exp(-angular_distance_deg / 30)
+
+        # 5. Combined pollution
+        pollution = phase_brightness * altitude_factor * scatter_decay
+
+        return min(1.0, max(0.0, pollution))
