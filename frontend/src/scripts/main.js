@@ -645,6 +645,44 @@ async function loadRecommendations(period) {
         };
       }
 
+      // Get moonlight impact
+      let moonlightImpact = null;
+      let moonlightImpactClass = '';
+      let moonlightColor = '';
+      if (rec.score_breakdown && rec.score_breakdown.moonlight_impact !== undefined) {
+        const pollution = rec.score_breakdown.moonlight_impact;
+        const pollutionPercent = Math.round(pollution * 100);
+
+        if (pollution <= 0.1) {
+          moonlightImpact = { level: '无影响', percentage: pollutionPercent };
+          moonlightImpactClass = 'impact-none';
+          moonlightColor = '#22C55E';
+        } else if (pollution <= 0.3) {
+          moonlightImpact = { level: '轻微', percentage: pollutionPercent };
+          moonlightImpactClass = 'impact-low';
+          moonlightColor = '#FACC15';
+        } else if (pollution <= 0.5) {
+          moonlightImpact = { level: '中等', percentage: pollutionPercent };
+          moonlightImpactClass = 'impact-medium';
+          moonlightColor = '#FB923C';
+        } else if (pollution <= 0.7) {
+          moonlightImpact = { level: '严重', percentage: pollutionPercent };
+          moonlightImpactClass = 'impact-high';
+          moonlightColor = '#F97316';
+        } else {
+          moonlightImpact = { level: '极严重', percentage: pollutionPercent };
+          moonlightImpactClass = 'impact-severe';
+          moonlightColor = '#EF4444';
+        }
+      }
+
+      const moonlightHtml = moonlightImpact ? `
+        <div class="moonlight-impact ${moonlightImpactClass}">
+          <span>月光影响:</span>
+          <strong style="color: ${moonlightColor}">${moonlightImpact.level} (${moonlightImpact.percentage}%)</strong>
+        </div>
+      ` : '';
+
       return `
         <div class="target-card ${scoreClass}" data-target-id="${rec.target.id}">
           <div class="target-header">
@@ -657,6 +695,7 @@ async function loadRecommendations(period) {
             <div><span>最佳时段:</span> <strong>${bestTime.start} - ${bestTime.end}</strong></div>
             <div><span>当前高度:</span> <strong>${rec.current_position.altitude.toFixed(1)}°</strong></div>
             <div><span>方位角:</span> <strong>${rec.current_position.azimuth.toFixed(1)}°</strong></div>
+            ${moonlightHtml}
           </div>
           <div class="target-rating">
             <span>推荐指数</span>
