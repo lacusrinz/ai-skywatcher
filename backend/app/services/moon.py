@@ -135,14 +135,15 @@ class MoonService:
         phase_angle_yesterday = astrometric_yesterday.phase_angle(self.ephemeris['sun'])
         phase_angle_yesterday_degrees = phase_angle_yesterday.degrees % 360
 
-        # If phase angle is increasing, we're waxing (approaching full moon)
-        # If phase angle is decreasing, we're waning (approaching new moon)
-        # But we need to account for wraparound at 360°
+        # Calculate phase angle change to determine waxing vs waning
+        # Phase angle increases (0° → 180°): waning (full → new moon)
+        # Phase angle decreases (180° → 0°): waxing (new → full moon)
+        # Account for wraparound at 360°
         delta = (phase_angle_degrees - phase_angle_yesterday_degrees) % 360
         if delta > 180:
             delta -= 360  # Normalize to -180 to 180 range
 
-        is_waning = delta < 0  # Phase angle decreasing means waning
+        is_waning = delta > 0  # Phase angle increasing means waning
 
         if not is_waning:
             # Waxing: new moon (0%) → full moon (100%)

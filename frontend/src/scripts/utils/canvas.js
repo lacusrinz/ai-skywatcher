@@ -170,8 +170,12 @@ export class SkyMapCanvas {
 
     // 点击选择
     this.canvas.addEventListener('click', (e) => {
-      if (this.state.hoveredTarget && !this.state.isDragging && !this.state.fovFrame.isDragging) {
-        this.onTargetSelect?.(this.state.hoveredTarget);
+      const rect = this.canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      if (!this.state.isDragging && !this.state.fovFrame.isDragging) {
+        this.handleClick(x, y);
       }
     });
 
@@ -576,7 +580,8 @@ export class SkyMapCanvas {
       // 优先检测月球点击
       if (this.state.moon.visible && this.isPointOnMoon(x, y)) {
         this.state.moon.selected = !this.state.moon.selected;
-        this.onMoonSelect?.(this.state.moon);
+        this.state.moon.showHeatmap = !this.state.moon.showHeatmap;
+        this.onMoonToggle?.(this.state.moon.showHeatmap);
         this.render();
         return;
       }
@@ -1054,16 +1059,24 @@ export class SkyMapCanvas {
     ctx.arc(x, y, size, 0, Math.PI * 2);
     ctx.clip();
 
-    // 绘制亮部
+    // 先绘制全亮圆（满月状态）
+    ctx.beginPath();
+    ctx.arc(x, y, size, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.fill();
+
+    // 再绘制暗部遮挡
     ctx.beginPath();
     if (side === 'right') {
-      ctx.arc(x, y, size, -Math.PI / 2, Math.PI / 2);
-      ctx.arc(x + offset, y, size, Math.PI / 2, -Math.PI / 2);
+      // 娥眉月：右侧亮，左侧遮挡
+      // 遮挡椭圆向左偏移
+      ctx.ellipse(x + offset, y, size * 1.3, size, 0, 0, Math.PI * 2);
     } else {
-      ctx.arc(x, y, size, Math.PI / 2, -Math.PI / 2);
-      ctx.arc(x - offset, y, size, -Math.PI / 2, Math.PI / 2);
+      // 残月：左侧亮，右侧遮挡
+      // 遮挡椭圆向右偏移
+      ctx.ellipse(x - offset, y, size * 1.3, size, 0, 0, Math.PI * 2);
     }
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.fillStyle = 'rgba(60, 60, 65, 0.85)';
     ctx.fill();
 
     ctx.restore();
@@ -1150,34 +1163,31 @@ export class SkyMapCanvas {
     // 如果没有启用热力图或没有数据，跳过
     if (!moon.showHeatmap || !moon.heatmapData || !moon.heatmapData.grid) return;
 
-    const heatmapGrid = moon.heatmapData.grid;
-    const resolution = moon.heatmapData.resolution || 36;
+    const heatmapData = moon.heatmapData.grid;
 
-    // 绘制热力图网格
-    for (let altIdx = 0; altIdx < heatmapGrid.length; altIdx++) {
-      for (let azIdx = 0; azIdx < heatmapGrid[altIdx].length; azIdx++) {
-        const cell = heatmapGrid[altIdx][azIdx];
+    // 绘制热力图网格（后端返回扁平数组，不是二维数组）
+    for (let i = 0; i < heatmapData.length; i++) {
+      const cell = heatmapData[i];
 
-        // 跳过无效数据
-        if (!cell || cell.pollution === undefined || cell.pollution === null) continue;
+      // 跳过无效数据
+      if (!cell || cell.pollution === undefined || cell.pollution === null) continue;
 
-        const pos = this.projectFromCenter(cell.az, cell.alt);
+      const pos = this.projectFromCenter(cell.azimuth, cell.altitude);
 
-        // 只渲染可见且在地平线以上的区域
-        if (!pos.visible || cell.alt <= 0) continue;
+      // 只渲染可见且在地平线以上的区域
+      if (!pos.visible || cell.altitude <= 0) continue;
 
-        // 获取污染颜色
-        const color = this.getPollutionColor(cell.pollution);
+      // 获取污染颜色
+      const color = this.getPollutionColor(cell.pollution);
 
-        // 绘制半透明热力点
-        const baseSize = 15;
-        const size = Math.max(3, Math.min(20, baseSize * pos.scale * 0.15));
+      // 绘制半透明热力点
+      const baseSize = 15;
+      const size = Math.max(3, Math.min(20, baseSize * pos.scale * 0.15));
 
-        ctx.beginPath();
-        ctx.arc(pos.x, pos.y, size, 0, Math.PI * 2);
-        ctx.fillStyle = color;
-        ctx.fill();
-      }
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, size, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
     }
 
     // 绘制热力图图例
