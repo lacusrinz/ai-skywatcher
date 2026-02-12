@@ -12,7 +12,8 @@ class ScoringService:
         target_size: float,
         fov_horizontal: float,
         fov_vertical: float,
-        duration_minutes: float
+        duration_minutes: float,
+        moonlight_pollution: float = 0.0
     ) -> dict:
         """
         计算推荐得分 (总分100)
@@ -24,6 +25,7 @@ class ScoringService:
             fov_horizontal: 水平FOV (度)
             fov_vertical: 垂直FOV (度)
             duration_minutes: 可见时长 (分钟)
+            moonlight_pollution: 月光污染程度 (0-1)
 
         Returns:
             {
@@ -32,50 +34,69 @@ class ScoringService:
                     "altitude": int,
                     "brightness": int,
                     "fov_match": int,
-                    "duration": int
+                    "duration": int,
+                    "moonlight": int
                 }
             }
         """
+        # Calculate individual scores (0-100)
         altitude_score = self._calculate_altitude_score(max_altitude)
         brightness_score = self._calculate_brightness_score(magnitude)
-        fov_score = self._calculate_fov_score(
+        size_score = self._calculate_fov_score(
             target_size, fov_horizontal, fov_vertical
         )
         duration_score = self._calculate_duration_score(duration_minutes)
+        moonlight_score = self._score_moonlight(moonlight_pollution)
 
-        total_score = altitude_score + brightness_score + fov_score + duration_score
+        # Apply weights as per spec
+        weights = {
+            "altitude": 0.25,      # 25%
+            "magnitude": 0.25,     # 25%
+            "size_match": 0.20,    # 20%
+            "duration": 0.15,      # 15%
+            "moonlight": 0.15      # 15%
+        }
+
+        total_score = (
+            altitude_score * weights["altitude"] +
+            brightness_score * weights["magnitude"] +
+            size_score * weights["size_match"] +
+            duration_score * weights["duration"] +
+            moonlight_score * weights["moonlight"]
+        )
 
         return {
-            "total_score": total_score,
+            "total_score": int(total_score),
             "breakdown": {
                 "altitude": altitude_score,
                 "brightness": brightness_score,
-                "fov_match": fov_score,
-                "duration": duration_score
+                "fov_match": size_score,
+                "duration": duration_score,
+                "moonlight": moonlight_score
             }
         }
 
     def _calculate_altitude_score(self, max_altitude: float) -> int:
-        """高度得分 (40分满分, 但最高可到50分)"""
+        """高度得分 (0-100分)"""
         if max_altitude < 30:
-            return max(0, int((max_altitude - 15) / 15 * 40))
+            return max(0, int((max_altitude - 15) / 15 * 100))
         elif max_altitude < 60:
-            return int(40 + (max_altitude - 30) / 30 * 10)
+            return int((max_altitude - 30) / 30 * 20 + 80)
         else:
-            return 50
+            return 100
 
     def _calculate_brightness_score(self, magnitude: float) -> int:
-        """亮度得分 (30分满分)"""
+        """亮度得分 (0-100分)"""
         if magnitude <= 2:
-            return 30
+            return 100
         elif magnitude <= 4:
-            return 25
+            return 85
         elif magnitude <= 6:
-            return 18
+            return 65
         elif magnitude <= 8:
-            return 10
+            return 35
         else:
-            return 5
+            return 15
 
     def _calculate_fov_score(
         self,
@@ -83,7 +104,7 @@ class ScoringService:
         fov_h: float,
         fov_v: float
     ) -> int:
-        """FOV匹配度得分 (20分满分)"""
+        """FOV匹配度得分 (0-100分)"""
         # 将FOV转换为角分
         fov_h_arcmin = fov_h * 60
         fov_v_arcmin = fov_v * 60
@@ -93,25 +114,38 @@ class ScoringService:
         ratio = target_size / min_fov
 
         if ratio < 0.1:
-            return 5  # 太小
+            return 25  # 太小
         elif ratio > 1.5:
-            return 3  # 太大
+            return 20  # 太大
         elif 0.2 <= ratio <= 0.7:
-            return 20  # 理想
+            return 100  # 理想
         elif 0.1 <= ratio < 0.2:
-            return 15
+            return 75
         elif 0.7 < ratio <= 1.0:
-            return 12
+            return 60
         else:
-            return 8
+            return 40
 
     def _calculate_duration_score(self, duration_minutes: float) -> int:
-        """时长得分 (10分满分)"""
+        """时长得分 (0-100分)"""
         if duration_minutes > 240:  # >4小时
-            return 10
+            return 100
         elif duration_minutes >= 120:  # 2-4小时
-            return 8
+            return 75
         elif duration_minutes >= 60:  # 1-2小时
-            return 5
+            return 50
         else:  # <1小时
-            return 2
+            return 25
+
+    def _score_moonlight(self, pollution: float) -> int:
+        """月光得分 (0-100分)"""
+        if pollution <= 0.1:
+            return 100  # 无影响
+        elif pollution <= 0.3:
+            return 80  # 轻微影响
+        elif pollution <= 0.5:
+            return 45  # 中等影响
+        elif pollution <= 0.7:
+            return 20  # 严重影响
+        else:
+            return 0  # 极严重影响

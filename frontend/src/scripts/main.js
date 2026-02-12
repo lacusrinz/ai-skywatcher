@@ -66,8 +66,19 @@ function initApp() {
       // TODO: Scroll to target card in recommend panel
     };
 
+    // Set moon toggle callback
+    skyMap.onMoonToggle = (showHeatmap) => {
+      console.log('Moon heatmap toggled:', showHeatmap);
+      if (showHeatmap) {
+        loadMoonHeatmap();
+      }
+    };
+
     // Load initial sky map data
     loadSkyMapData();
+
+    // Load initial moon data
+    loadMoonData();
   }
 
   // Load initial recommendations
@@ -88,6 +99,9 @@ function initApp() {
 
   // Start clock
   startClock();
+
+  // Set up moon data updates every 5 minutes
+  setInterval(loadMoonData, 5 * 60 * 1000);
 
   console.log('AI Skywatcher initialized');
 }
@@ -187,6 +201,9 @@ function handleLocationSelectChange(e) {
 
       // Reload recommendations with new location
       loadRecommendations('tonight-golden');
+
+      // Reload sky map and moon data with new location
+      loadSkyMapData();
     }
   }
 
@@ -255,6 +272,9 @@ function handleLocationInput() {
 
   // Update save/delete buttons
   updateLocationButtons();
+
+  // Reload sky map and moon data with new location
+  loadSkyMapData();
 
   console.log('Location manually updated:', { lat, lng });
 }
@@ -341,8 +361,69 @@ async function loadSkyMapData() {
 
       skyMap.updateData({ targets });
     }
+
+    // Update moon position for selected date
+    await loadMoonData(timestamp);
   } catch (error) {
     console.error('Failed to load sky map data:', error);
+  }
+}
+
+// Load Moon Data
+async function loadMoonData(timestamp = null) {
+  try {
+    const time = timestamp || new Date();
+
+    const data = await API.getMoonPosition({
+      location: currentLocation,
+      timestamp: time.toISOString()
+    });
+
+    if (skyMap && data.position) {
+      skyMap.updateData({
+        moon: {
+          position: {
+            azimuth: data.position.azimuth,
+            altitude: data.position.altitude,
+            distance: data.position.distance,
+            ra: data.position.ra,
+            dec: data.position.dec
+          },
+          phase: data.phase,
+          visible: data.position.altitude > 0
+        }
+      });
+    }
+
+    console.log('Moon data loaded:', data);
+  } catch (error) {
+    console.error('Failed to load moon data:', error);
+  }
+}
+
+// Load Moon Heatmap
+async function loadMoonHeatmap(timestamp = null) {
+  try {
+    const time = timestamp || new Date();
+
+    const data = await API.getMoonHeatmap({
+      location: currentLocation,
+      timestamp: time.toISOString(),
+      resolution: 36
+    });
+
+    if (skyMap && data.heatmap) {
+      skyMap.updateData({
+        moon: {
+          showHeatmap: true,
+          heatmapData: data.heatmap
+        }
+      });
+    }
+
+    console.log('Moon heatmap loaded');
+  } catch (error) {
+    console.error('Failed to load moon heatmap:', error);
   }
 }
 
@@ -573,6 +654,44 @@ async function loadRecommendations(period) {
         };
       }
 
+      // Get moonlight impact
+      let moonlightImpact = null;
+      let moonlightImpactClass = '';
+      let moonlightColor = '';
+      if (rec.score_breakdown && rec.score_breakdown.moonlight_impact !== undefined) {
+        const pollution = rec.score_breakdown.moonlight_impact;
+        const pollutionPercent = Math.round(pollution * 100);
+
+        if (pollution <= 0.1) {
+          moonlightImpact = { level: '无影响', percentage: pollutionPercent };
+          moonlightImpactClass = 'impact-none';
+          moonlightColor = '#22C55E';
+        } else if (pollution <= 0.3) {
+          moonlightImpact = { level: '轻微', percentage: pollutionPercent };
+          moonlightImpactClass = 'impact-low';
+          moonlightColor = '#FACC15';
+        } else if (pollution <= 0.5) {
+          moonlightImpact = { level: '中等', percentage: pollutionPercent };
+          moonlightImpactClass = 'impact-medium';
+          moonlightColor = '#FB923C';
+        } else if (pollution <= 0.7) {
+          moonlightImpact = { level: '严重', percentage: pollutionPercent };
+          moonlightImpactClass = 'impact-high';
+          moonlightColor = '#F97316';
+        } else {
+          moonlightImpact = { level: '极严重', percentage: pollutionPercent };
+          moonlightImpactClass = 'impact-severe';
+          moonlightColor = '#EF4444';
+        }
+      }
+
+      const moonlightHtml = moonlightImpact ? `
+        <div class="moonlight-impact ${moonlightImpactClass}">
+          <span>月光影响:</span>
+          <strong style="color: ${moonlightColor}">${moonlightImpact.level} (${moonlightImpact.percentage}%)</strong>
+        </div>
+      ` : '';
+
       return `
         <div class="target-card ${scoreClass}" data-target-id="${rec.target.id}">
           <div class="target-header">
@@ -585,6 +704,7 @@ async function loadRecommendations(period) {
             <div><span>最佳时段:</span> <strong>${bestTime.start} - ${bestTime.end}</strong></div>
             <div><span>当前高度:</span> <strong>${rec.current_position.altitude.toFixed(1)}°</strong></div>
             <div><span>方位角:</span> <strong>${rec.current_position.azimuth.toFixed(1)}°</strong></div>
+            ${moonlightHtml}
           </div>
           <div class="target-rating">
             <span>推荐指数</span>
@@ -928,6 +1048,9 @@ function updateSkyMapForTime(hour, minute) {
 
         skyMap.updateData({ targets });
       }
+
+      // Update moon position for new time
+      await loadMoonData(timestamp);
     } catch (error) {
       console.error('Failed to update sky map for time:', error);
     }

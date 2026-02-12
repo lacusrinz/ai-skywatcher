@@ -40,7 +40,9 @@
       "Bash(fi:*)",
       "Bash(wait:*)",
       "Bash(xargs kill:*)",
-      "Skill(superpowers:finishing-a-development-branch)"
+      "Skill(superpowers:finishing-a-development-branch)",
+      "Bash(echo:*)",
+      "Bash(flake8:*)"
     ]
   }
 }

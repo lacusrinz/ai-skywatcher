@@ -41,6 +41,16 @@ export class SkyMapCanvas {
         isVisible: true,
         isSelected: false,
         isDragging: false
+      },
+      // 月球状态
+      moon: {
+        position: null,  // { azimuth, altitude, distance, ra, dec }
+        phase: null,     // { name, percentage, age_days }
+        visible: false,
+        hovered: false,
+        selected: false,
+        showHeatmap: false,
+        heatmapData: null  // { grid: [[{alt, az, pollution}]], resolution }
       }
     };
 
@@ -160,8 +170,12 @@ export class SkyMapCanvas {
 
     // 点击选择
     this.canvas.addEventListener('click', (e) => {
-      if (this.state.hoveredTarget && !this.state.isDragging && !this.state.fovFrame.isDragging) {
-        this.onTargetSelect?.(this.state.hoveredTarget);
+      const rect = this.canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      if (!this.state.isDragging && !this.state.fovFrame.isDragging) {
+        this.handleClick(x, y);
       }
     });
 
@@ -248,6 +262,8 @@ export class SkyMapCanvas {
     this.drawHorizon();
     this.drawVisibleZones();  // 绘制可视区域
     this.drawFOVFrame();      // 绘制 FOV 框
+    this.drawMoonlightPollutionHeatmap();  // 绘制月光污染热力图
+    this.drawMoon();
     this.drawTargets();
     this.drawCompass();
   }
@@ -522,6 +538,18 @@ export class SkyMapCanvas {
   handleHover(mouseX, mouseY) {
     let found = null;
 
+    // 优先检测月球悬停
+    if (this.state.moon.visible && this.state.moon.position) {
+      if (this.isPointOnMoon(mouseX, mouseY)) {
+        this.state.moon.hovered = true;
+        this.canvas.style.cursor = 'pointer';
+        this.render();
+        return;
+      } else if (this.state.moon.hovered) {
+        this.state.moon.hovered = false;
+      }
+    }
+
     // 检测是否悬停在目标上
     for (const target of this.state.targets) {
       const pos = this.projectFromCenter(target.azimuth, target.altitude);
@@ -548,8 +576,20 @@ export class SkyMapCanvas {
   }
 
   handleClick(x, y) {
-    if (this.state.hoveredTarget && !this.state.isDragging) {
-      this.onTargetSelect?.(this.state.hoveredTarget);
+    if (!this.state.isDragging && !this.state.fovFrame.isDragging) {
+      // 优先检测月球点击
+      if (this.state.moon.visible && this.isPointOnMoon(x, y)) {
+        this.state.moon.selected = !this.state.moon.selected;
+        this.state.moon.showHeatmap = !this.state.moon.showHeatmap;
+        this.onMoonToggle?.(this.state.moon.showHeatmap);
+        this.render();
+        return;
+      }
+
+      // 检测目标点击
+      if (this.state.hoveredTarget) {
+        this.onTargetSelect?.(this.state.hoveredTarget);
+      }
     }
   }
 
@@ -829,5 +869,443 @@ export class SkyMapCanvas {
     }
 
     return false;
+  }
+
+  /**
+   * 绘制月球
+   */
+  drawMoon() {
+    const { ctx } = this;
+    const { moon } = this.state;
+
+    // 如果没有月球数据或不可见，跳过
+    if (!moon.visible || !moon.position) return;
+
+    const pos = this.projectFromCenter(moon.position.azimuth, moon.position.altitude);
+
+    // 只渲染可见且在地平线以上的月球
+    if (!pos.visible || moon.position.altitude <= 0) return;
+
+    // 保存月球屏幕位置供后续使用
+    moon.screenX = pos.x;
+    moon.screenY = pos.y;
+
+    const baseSize = 20;
+    const size = Math.max(10, Math.min(40, baseSize * pos.scale * 0.2));
+    const isHovered = moon.hovered;
+    const isSelected = moon.selected;
+    const moonSize = isHovered || isSelected ? size * 1.3 : size;
+
+    // 绘制光晕效果
+    if (isHovered || isSelected) {
+      const gradient = ctx.createRadialGradient(
+        pos.x, pos.y, 0,
+        pos.x, pos.y, moonSize * 2.5
+      );
+      gradient.addColorStop(0, 'rgba(255, 255, 200, 0.5)');
+      gradient.addColorStop(1, 'rgba(255, 255, 200, 0)');
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, moonSize * 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 绘制月相（包含底色和亮部）
+    if (moon.phase) {
+      this.drawMoonPhase(ctx, pos.x, pos.y, moonSize, moon.phase);
+    }
+
+    // 绘制月球边框
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, moonSize, 0, Math.PI * 2);
+    ctx.strokeStyle = (isHovered || isSelected) ? '#FFFFFF' : 'rgb(150, 150, 155)';
+    ctx.lineWidth = (isHovered || isSelected) ? 3 : 1;
+    ctx.stroke();
+
+    // 绘制月球标签
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = isHovered || isSelected ? 'bold 13px sans-serif' : '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('月球', pos.x, pos.y - moonSize - 4);
+
+    // 悬停或选中时显示详细信息
+    if (isHovered || isSelected) {
+      this.drawMoonTooltip(ctx, pos, moonSize, moon);
+    }
+  }
+
+  /**
+   * 绘制月相
+   * @param {CanvasRenderingContext2D} ctx - Canvas context
+   * @param {number} x - Center X
+   * @param {number} y - Center Y
+   * @param {number} size - Moon radius
+   * @param {Object} phase - Phase data { name, percentage, age_days }
+   */
+  drawMoonPhase(ctx, x, y, size, phase) {
+    const percentage = phase.percentage;
+    const name = phase.name;
+
+    // 先绘制暗色底色圆（所有月相都需要）
+    ctx.beginPath();
+    ctx.arc(x, y, size, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgb(60, 60, 65)';
+    ctx.fill();
+
+    // 满月（全亮）- 使用范围判断而非严格等于
+    if (percentage >= 99) {
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.fill();
+    }
+    // 亏凸月（满月到下弦月，左侧逐渐变暗）- 必须先判断！
+    else if (name === '亏凸月') {
+      // 计算阴影大小：从满月(无阴影)到下弦月(半圆阴影)
+      const shadowProgress = (percentage - 50) / 50; // 0 to 1
+
+      // 右侧全亮（从90°到-90°，即右半圆）
+      ctx.beginPath();
+      ctx.arc(x, y, size, Math.PI / 2, -Math.PI / 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.fill();
+
+      // 左侧亮部（逐渐减小，从满月到下弦月）
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.clip();
+
+      // 使用偏移圆弧来绘制左侧亮部
+      // shadowProgress = 0 (满月) → offset = size (左侧全亮)
+      // shadowProgress = 1 (下弦月) → offset = 0 (左侧不亮)
+      const offset = size * (1 - shadowProgress);
+      ctx.beginPath();
+      ctx.arc(x - size + offset, y, size, -Math.PI / 2, Math.PI / 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.fill();
+      ctx.restore();
+    }
+    // 盈凸月（上弦月到满月，右侧全亮，左侧逐渐变亮，50-99%）
+    else if (name === '盈凸月') {
+      const lightness = (percentage - 50) / 50; // 0 to 1
+
+      // 右侧全亮
+      ctx.beginPath();
+      ctx.arc(x, y, size, Math.PI / 2, -Math.PI / 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.fill();
+
+      // 左侧亮部（逐渐增大）
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.clip();
+
+      ctx.beginPath();
+      ctx.arc(x - size + (size * 2 * lightness), y, size, -Math.PI / 2, Math.PI / 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.fill();
+      ctx.restore();
+    }
+    // 新月到上弦月（右侧亮，0-50%）- 娥眉月
+    else if (percentage < 50 && (name === '娥眉月' || !name.includes('凸'))) {
+      this.drawMoonCrescent(ctx, x, y, size, percentage, 'right');
+    }
+    // 上弦月附近（45-55%，右半圆亮）
+    else if (percentage >= 45 && percentage < 55 && name === '上弦月') {
+      ctx.beginPath();
+      ctx.arc(x, y, size, -Math.PI / 2, Math.PI / 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.fill();
+    }
+    // 下弦月附近（45-55%，左半圆亮）
+    else if (percentage >= 45 && percentage < 55 && name === '下弦月') {
+      ctx.beginPath();
+      ctx.arc(x, y, size, Math.PI / 2, -Math.PI / 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.fill();
+    }
+    // 下弦月到新月（左侧亮，残月）
+    else if (name === '残月' || percentage < 50) {
+      this.drawMoonCrescent(ctx, x, y, size, 100 - percentage, 'left');
+    }
+    // 兜底：其他情况绘制全亮
+    else {
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.fill();
+    }
+  }
+
+  /**
+   * 绘制月牙（新月或残月）
+   * @param {CanvasRenderingContext2D} ctx - Canvas context
+   * @param {number} x - Center X
+   * @param {number} y - Center Y
+   * @param {number} size - Moon radius
+   * @param {number} percentage - Illumination percentage (0-50)
+   * @param {string} side - 'right' or 'left'
+   */
+  drawMoonCrescent(ctx, x, y, size, percentage, side) {
+    const offset = size * (1 - percentage / 50);
+
+    ctx.save();
+
+    // 创建月球剪切路径
+    ctx.beginPath();
+    ctx.arc(x, y, size, 0, Math.PI * 2);
+    ctx.clip();
+
+    // 先绘制全亮圆（满月状态）
+    ctx.beginPath();
+    ctx.arc(x, y, size, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.fill();
+
+    // 再绘制暗部遮挡
+    ctx.beginPath();
+    if (side === 'right') {
+      // 娥眉月：右侧亮，左侧遮挡
+      // 遮挡椭圆向左偏移
+      ctx.ellipse(x + offset, y, size * 1.3, size, 0, 0, Math.PI * 2);
+    } else {
+      // 残月：左侧亮，右侧遮挡
+      // 遮挡椭圆向右偏移
+      ctx.ellipse(x - offset, y, size * 1.3, size, 0, 0, Math.PI * 2);
+    }
+    ctx.fillStyle = 'rgba(60, 60, 65, 0.85)';
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  /**
+   * 绘制月球提示框
+   * @param {CanvasRenderingContext2D} ctx - Canvas context
+   * @param {Object} pos - Projected position { x, y, z, visible, scale }
+   * @param {number} size - Moon size
+   * @param {Object} moon - Moon state
+   */
+  drawMoonTooltip(ctx, pos, size, moon) {
+    const infoY = pos.y + size + 8;
+    const lineHeight = 14;
+
+    // 半透明背景
+    const padding = 8;
+    const boxWidth = 140;
+    const boxHeight = moon.phase ? lineHeight * 4 + padding * 2 : lineHeight * 3 + padding * 2;
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(pos.x - boxWidth / 2, infoY, boxWidth, boxHeight);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(pos.x - boxWidth / 2, infoY, boxWidth, boxHeight);
+
+    // 绘制信息
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+
+    let y = infoY + padding;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText(`高度: ${moon.position.altitude.toFixed(1)}°`, pos.x, y);
+    y += lineHeight;
+
+    ctx.fillText(`方位: ${moon.position.azimuth.toFixed(1)}°`, pos.x, y);
+    y += lineHeight;
+
+    if (moon.phase) {
+      ctx.fillStyle = '#FFD700';
+      ctx.fillText(`${moon.phase.name} (${moon.phase.percentage.toFixed(0)}%)`, pos.x, y);
+      y += lineHeight;
+    }
+
+    ctx.fillStyle = '#94A3B8';
+    ctx.font = '10px sans-serif';
+    const distance = (moon.position.distance || 384400).toFixed(0);
+    ctx.fillText(`距离: ${Number(distance).toLocaleString()} km`, pos.x, y);
+  }
+
+  /**
+   * 检测点是否在月球上
+   * @param {number} x - Screen X
+   * @param {number} y - Screen Y
+   * @returns {boolean}
+   */
+  isPointOnMoon(x, y) {
+    const { moon } = this.state;
+
+    if (!moon.visible || !moon.position || moon.screenX === undefined) return false;
+
+    const baseSize = 20;
+    const pos = this.projectFromCenter(moon.position.azimuth, moon.position.altitude);
+    const size = Math.max(10, Math.min(40, baseSize * pos.scale * 0.2));
+    const moonSize = moon.hovered || moon.selected ? size * 1.3 : size;
+
+    const distance = Math.sqrt(
+      Math.pow(x - moon.screenX, 2) +
+      Math.pow(y - moon.screenY, 2)
+    );
+
+    return distance < moonSize + 5;
+  }
+
+  /**
+   * 绘制月光污染热力图
+   */
+  drawMoonlightPollutionHeatmap() {
+    const { ctx } = this;
+    const { moon } = this.state;
+
+    // 如果没有启用热力图或没有数据，跳过
+    if (!moon.showHeatmap || !moon.heatmapData || !moon.heatmapData.grid) return;
+
+    const heatmapData = moon.heatmapData.grid;
+
+    // 绘制热力图网格（后端返回扁平数组，不是二维数组）
+    for (let i = 0; i < heatmapData.length; i++) {
+      const cell = heatmapData[i];
+
+      // 跳过无效数据
+      if (!cell || cell.pollution === undefined || cell.pollution === null) continue;
+
+      const pos = this.projectFromCenter(cell.azimuth, cell.altitude);
+
+      // 只渲染可见且在地平线以上的区域
+      if (!pos.visible || cell.altitude <= 0) continue;
+
+      // 获取污染颜色
+      const color = this.getPollutionColor(cell.pollution);
+
+      // 绘制半透明热力点
+      const baseSize = 15;
+      const size = Math.max(3, Math.min(20, baseSize * pos.scale * 0.15));
+
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, size, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
+
+    // 绘制热力图图例
+    this.drawHeatmapLegend();
+  }
+
+  /**
+   * 获取月光污染颜色
+   * @param {number} pollution - 污染等级 (0-1)
+   * @returns {string} RGBA color
+   */
+  getPollutionColor(pollution) {
+    // 污染等级到颜色的映射
+    // 0.0-0.1: 绿色 (无影响/轻微)
+    // 0.1-0.3: 黄色 (轻微)
+    // 0.3-0.5: 橙色 (中等)
+    // 0.5-0.7: 红色 (严重)
+    // 0.7-1.0: 深红色 (极严重)
+
+    let r, g, b, a;
+
+    if (pollution <= 0.1) {
+      // 绿色到黄绿色
+      const t = pollution / 0.1;
+      r = Math.floor(34 + t * (250 - 34));
+      g = Math.floor(197 + t * (204 - 197));
+      b = Math.floor(94 + t * (21 - 94));
+      a = 0.3 + t * 0.2;
+    } else if (pollution <= 0.3) {
+      // 黄绿色到黄色
+      const t = (pollution - 0.1) / 0.2;
+      r = Math.floor(250 + t * (255 - 250));
+      g = Math.floor(204 + t * (235 - 204));
+      b = Math.floor(21 + t * (59 - 21));
+      a = 0.5 + t * 0.1;
+    } else if (pollution <= 0.5) {
+      // 黄色到橙色
+      const t = (pollution - 0.3) / 0.2;
+      r = Math.floor(255 + t * (249 - 255));
+      g = Math.floor(235 + t * (115 - 235));
+      b = Math.floor(59 + t * (22 - 59));
+      a = 0.6;
+    } else if (pollution <= 0.7) {
+      // 橙色到红色
+      const t = (pollution - 0.5) / 0.2;
+      r = Math.floor(249 + t * (239 - 249));
+      g = Math.floor(115 + t * (68 - 115));
+      b = Math.floor(22 + t * (68 - 22));
+      a = 0.6 + t * 0.1;
+    } else {
+      // 红色到深红色
+      const t = Math.min(1, (pollution - 0.7) / 0.3);
+      r = Math.floor(239 - t * (239 - 127));
+      g = Math.floor(68 - t * (68 - 29));
+      b = Math.floor(68 - t * (68 - 29));
+      a = 0.7;
+    }
+
+    return `rgba(${r}, ${g}, ${b}, ${a.toFixed(2)})`;
+  }
+
+  /**
+   * 绘制热力图图例
+   */
+  drawHeatmapLegend() {
+    const { ctx, config } = this;
+
+    const legendX = config.width - 160;
+    const legendY = config.height - 120;
+    const legendWidth = 140;
+    const legendHeight = 100;
+
+    // 背景
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(legendX, legendY, legendWidth, legendHeight);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(legendX, legendY, legendWidth, legendHeight);
+
+    // 标题
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('月光污染等级', legendX + 10, legendY + 10);
+
+    // 渐变条
+    const gradientX = legendX + 10;
+    const gradientY = legendY + 35;
+    const gradientWidth = 120;
+    const gradientHeight = 15;
+
+    const gradient = ctx.createLinearGradient(gradientX, 0, gradientX + gradientWidth, 0);
+    gradient.addColorStop(0, 'rgba(34, 197, 94, 0.7)');      // 绿色
+    gradient.addColorStop(0.25, 'rgba(250, 204, 21, 0.7)');   // 黄色
+    gradient.addColorStop(0.5, 'rgba(249, 115, 22, 0.7)');    // 橙色
+    gradient.addColorStop(0.75, 'rgba(239, 68, 68, 0.7)');     // 红色
+    gradient.addColorStop(1, 'rgba(127, 29, 29, 0.7)');       // 深红色
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(gradientX, gradientY, gradientWidth, gradientHeight);
+
+    // 标签
+    ctx.font = '10px sans-serif';
+    ctx.fillStyle = '#94A3B8';
+
+    const labels = [
+      { text: '无影响', x: gradientX },
+      { text: '轻微', x: gradientX + gradientWidth * 0.25 },
+      { text: '中等', x: gradientX + gradientWidth * 0.5 },
+      { text: '严重', x: gradientX + gradientWidth * 0.75 },
+      { text: '极严重', x: gradientX + gradientWidth }
+    ];
+
+    labels.forEach(label => {
+      ctx.textAlign = label.x === gradientX ? 'left' :
+                     label.x === gradientX + gradientWidth ? 'right' : 'center';
+      ctx.fillText(label.text, label.x, gradientY + gradientHeight + 5);
+    });
   }
 }
