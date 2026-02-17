@@ -95,6 +95,14 @@ function initApp() {
   // Initialize FOV frame
   initFOVFrame();
 
+  // 【新增】对准可视区域中心
+  try {
+    centerSkyMapOnVisibleZone();
+  } catch (error) {
+    console.error('[centerSkyMap] Failed to center on visible zone:', error);
+    // 失败时保持默认视角，不阻塞页面加载
+  }
+
   // Load equipment presets
   loadEquipmentPresets();
 
@@ -1338,6 +1346,89 @@ function loadZonesToCanvas() {
   const zones = getVisibleZones();
   skyMap.updateData({ zones });
   skyMap.render();
+}
+
+/**
+ * 将天空图视角对准到优先级最高的可视区域中心
+ */
+function centerSkyMapOnVisibleZone() {
+  const zones = getVisibleZones();
+
+  if (zones.length === 0) {
+    console.log('[centerSkyMap] No zones found, skipping');
+    return;
+  }
+
+  // 找到优先级最高的非默认区域
+  const customZones = zones.filter(z => !z.isDefault);
+
+  if (customZones.length === 0) {
+    console.log('[centerSkyMap] No custom zones, skipping');
+    return;
+  }
+
+  // 按优先级排序，取第一个
+  const highestPriorityZone = customZones.reduce((prev, current) =>
+    prev.priority < current.priority ? prev : current
+  );
+
+  // 将矩形区域转换为多边形格式
+  const polygon = [
+    highestPriorityZone.start,
+    [highestPriorityZone.end[0], highestPriorityZone.start[1]],
+    highestPriorityZone.end,
+    [highestPriorityZone.start[0], highestPriorityZone.end[1]]
+  ];
+
+  // 计算区域中心
+  const center = calculatePolygonCenter(polygon);
+
+  console.log('[centerSkyMap] Centering on zone:', highestPriorityZone.name,
+              'at azimuth:', center.azimuth.toFixed(1),
+              'altitude:', center.altitude.toFixed(1));
+
+  // 对准天空图
+  if (skyMap) {
+    skyMap.view.azimuth = center.azimuth;
+    skyMap.view.altitude = Math.max(0, Math.min(90, center.altitude));
+    skyMap.render();
+  }
+}
+
+/**
+ * 计算多边形中心点
+ * @param {Array<Array<number>>} polygon - 多边形顶点 [[az, alt], ...]
+ * @returns {Object} { azimuth, altitude }
+ */
+function calculatePolygonCenter(polygon) {
+  let sumAz = 0;
+  let sumAlt = 0;
+  const n = polygon.length;
+
+  // 检查是否跨越0/360度边界
+  const azimuths = polygon.map(p => p[0]);
+  const maxAz = Math.max(...azimuths);
+  const minAz = Math.min(...azimuths);
+  const crossesBoundary = (maxAz - minAz) > 180;
+
+  if (crossesBoundary) {
+    // 跨越边界，需要特殊处理
+    for (const [az, alt] of polygon) {
+      const adjustedAz = az > 180 ? az - 360 : az;
+      sumAz += adjustedAz;
+      sumAlt += alt;
+    }
+    let centerAz = sumAz / n;
+    if (centerAz < 0) centerAz += 360;
+    return { azimuth: centerAz, altitude: sumAlt / n };
+  } else {
+    // 正常情况
+    for (const [az, alt] of polygon) {
+      sumAz += az;
+      sumAlt += alt;
+    }
+    return { azimuth: sumAz / n, altitude: sumAlt / n };
+  }
 }
 
 /**
