@@ -78,8 +78,8 @@ function initApp() {
       }
     };
 
-    // Load initial sky map data
-    loadSkyMapData();
+    // 【修复】不在这里加载 sky map data，让 loadRecommendations() 负责初始化天空图
+    // loadSkyMapData();  // 已删除：避免加载错误的初始数据
 
     // Load initial moon data
     loadMoonData();

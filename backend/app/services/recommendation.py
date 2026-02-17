@@ -99,11 +99,11 @@ class RecommendationService:
             # Determine period
             period = self._determine_period(best_window["start_time"])
 
-            # Get current position
+            # Get current position at specified time
             current_alt, current_az = self.astronomy.calculate_position(
                 target.ra, target.dec,
                 observer_lat, observer_lon,
-                datetime.now()
+                date  # ✅ FIX: 使用传入的date参数
             )
 
             recommendations.append({
@@ -112,7 +112,7 @@ class RecommendationService:
                 "current_position": {
                     "altitude": current_alt,
                     "azimuth": current_az,
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": date.isoformat()  # ✅ FIX: 使用传入的date
                 },
                 "score": score_result["total_score"],
                 "score_breakdown": score_result["breakdown"],
