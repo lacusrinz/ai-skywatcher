@@ -430,6 +430,59 @@ export class SkyMapCanvas {
     requestAnimationFrame(animate);
   }
 
+  // ========== FOV 框动画方法 ==========
+
+  /**
+   * 将 FOV 框平滑移动到目标位置
+   * @param {Object} target - 目标对象 { azimuth, altitude, id, name }
+   * @param {Object} options - 选项 { duration, onComplete }
+   */
+  animateFOVFrameToTarget(target, options = {}) {
+    const {
+      duration = 400,  // 400ms 动画（比对焦更快）
+      onComplete = null
+    } = options;
+
+    const startAzimuth = this.state.fovFrame.center.azimuth;
+    const startAltitude = this.state.fovFrame.center.altitude;
+    const endAzimuth = target.azimuth;
+    const endAltitude = target.altitude;
+
+    const startTime = performance.now();
+
+    const animate = (timestamp) => {
+      const elapsed = timestamp - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+
+      // Ease-out cubic 实现平滑减速
+      const eased = 1 - Math.pow(1 - progress, 3);
+
+      // 插值角度
+      const newAzimuth = this.lerpAngle(startAzimuth, endAzimuth, eased);
+      const newAltitude = this.lerp(startAltitude, endAltitude, eased);
+
+      this.state.fovFrame.center = {
+        azimuth: (newAzimuth + 360) % 360,
+        altitude: Math.max(0, Math.min(90, newAltitude))
+      };
+
+      this.render();
+
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      } else {
+        // 动画完成
+        this.onFOVFrameChange?.(this.state.fovFrame.center);
+
+        if (onComplete) {
+          onComplete();
+        }
+      }
+    };
+
+    requestAnimationFrame(animate);
+  }
+
   // ========== FOV 叠加方法 ==========
 
   /**
@@ -509,9 +562,9 @@ export class SkyMapCanvas {
 
     if (!fovCenter.visible) return null;
 
-    // 计算阈值距离：FOV 框在 Canvas 上的尺寸的 50%
+    // 【修复】计算阈值距离：使用 FOV 框的较大尺寸，阈值为 100%
     const fovPixelSize = this.getFovPixelSize();
-    const thresholdDistance = Math.min(fovPixelSize.width, fovPixelSize.height) * 0.5;
+    const thresholdDistance = Math.max(fovPixelSize.width, fovPixelSize.height) * 1.0;
 
     // 找到最近的天体
     let closestTarget = null;
@@ -981,7 +1034,16 @@ export class SkyMapCanvas {
 
       // 检测目标点击
       if (this.state.hoveredTarget) {
-        this.onTargetSelect?.(this.state.hoveredTarget);
+        const target = this.state.hoveredTarget;
+
+        // 【新增】将 FOV 框移动到目标
+        this.animateFOVFrameToTarget(target, {
+          duration: 400,
+          onComplete: () => {
+            // 动画完成后触发回调
+            this.onTargetSelect?.(target);
+          }
+        });
       }
     }
   }

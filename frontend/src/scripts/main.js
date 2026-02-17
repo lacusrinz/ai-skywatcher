@@ -333,11 +333,49 @@ function updateSkyMapTargets(recommendations) {
     id: rec.target.id,
     name: rec.target.name,
     type: rec.target.type,
+    size: rec.target.size,
     azimuth: rec.current_position.azimuth,
     altitude: rec.current_position.altitude
   }));
 
   skyMap.updateData({ targets });
+}
+
+/**
+ * 更新推荐卡片的显示位置信息（不重建整个DOM）
+ * @param {Array} recommendations - 推荐数据数组
+ */
+function updateRecommendationCards(recommendations) {
+  const targetsList = document.getElementById('targetsList');
+  if (!targetsList) return;
+
+  recommendations.forEach(rec => {
+    const card = targetsList.querySelector(`[data-target-id="${rec.target.id}"]`);
+    if (card) {
+      // 更新位置信息
+      const positionInfo = card.querySelector('.position-info');
+      if (positionInfo) {
+        positionInfo.textContent = `方位: ${rec.current_position.azimuth.toFixed(1)}° 高度: ${rec.current_position.altitude.toFixed(1)}°`;
+      }
+
+      // 更新最佳观测时间
+      let bestTime = { start: '--:--', end: '--:--' };
+      if (rec.visibility_windows && rec.visibility_windows.length > 0) {
+        const window = rec.visibility_windows[0];
+        const start = new Date(window.start_time);
+        const end = new Date(window.end_time);
+        bestTime = {
+          start: `${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')}`,
+          end: `${end.getHours().toString().padStart(2, '0')}:${end.getMinutes().toString().padStart(2, '0')}`
+        };
+      }
+
+      const bestTimeInfo = card.querySelector('.best-time');
+      if (bestTimeInfo) {
+        bestTimeInfo.textContent = `最佳: ${bestTime.start} - ${bestTime.end}`;
+      }
+    }
+  });
 }
 
 // Load Sky Map Data
@@ -761,6 +799,26 @@ async function loadRecommendations(period) {
             onComplete: () => {
               // 对焦完成后高亮目标
               skyMap.highlightTarget(targetId);
+
+              // 【新增】将 FOV 框移动到目标
+              skyMap.animateFOVFrameToTarget(
+                {
+                  azimuth: target.current_position.azimuth,
+                  altitude: target.current_position.altitude,
+                  id: target.target.id,
+                  name: target.target.name
+                },
+                {
+                  duration: 400,
+                  onComplete: () => {
+                    // 保存位置到 localStorage
+                    saveFOVFramePosition({
+                      azimuth: target.current_position.azimuth,
+                      altitude: target.current_position.altitude
+                    });
+                  }
+                }
+              );
             }
           }
         );
@@ -1068,24 +1126,64 @@ function updateSkyMapForTime(hour, minute) {
       const timestamp = new Date(selectedDate);
       timestamp.setHours(hour, minute, 0, 0);
 
-      // Get sky map data for new time
-      const data = await API.getSkyMapData({
-        location: currentLocation,
-        timestamp: timestamp.toISOString(),
-        include_targets: true,
-        target_types: ['emission-nebula', 'galaxy', 'cluster', 'planetary-nebula']
-      });
-
-      if (skyMap && data.targets) {
-        const targets = data.targets.map(t => ({
-          id: t.id,
-          name: t.name,
-          type: t.type,
-          azimuth: t.azimuth,
-          altitude: t.altitude
+      // 【修复】如果当前有推荐目标，更新它们的位置而不是加载所有目标
+      if (currentRecommendations.length > 0) {
+        // 获取当前推荐目标在新的时间的位置
+        const visibleZones = getVisibleZones().map(zone => ({
+          id: zone.id,
+          name: zone.name,
+          polygon: [
+            zone.start,
+            [zone.end[0], zone.start[1]],
+            zone.end,
+            [zone.start[0], zone.end[1]]
+          ],
+          priority: zone.priority
         }));
 
-        skyMap.updateData({ targets });
+        const timestampStr = formatDateForInput(timestamp);
+
+        const data = await API.getRecommendations({
+          location: currentLocation,
+          date: timestampStr,
+          time: `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`,
+          equipment: currentEquipment,
+          visible_zones: visibleZones,
+          filters: {
+            min_magnitude: 9
+          },
+          sort_by: 'score',
+          limit: 20
+        });
+
+        const recommendations = data.recommendations || [];
+
+        // 更新推荐数据
+        currentRecommendations = recommendations;
+
+        // 更新天空图和卡片显示
+        updateSkyMapTargets(recommendations);
+        updateRecommendationCards(recommendations);
+      } else {
+        // 如果没有推荐，则加载天空图数据（后备方案）
+        const data = await API.getSkyMapData({
+          location: currentLocation,
+          timestamp: timestamp.toISOString(),
+          include_targets: true,
+          target_types: ['emission-nebula', 'galaxy', 'cluster', 'planetary-nebula']
+        });
+
+        if (skyMap && data.targets) {
+          const targets = data.targets.map(t => ({
+            id: t.id,
+            name: t.name,
+            type: t.type,
+            azimuth: t.azimuth,
+            altitude: t.altitude
+          }));
+
+          skyMap.updateData({ targets });
+        }
       }
 
       // Update moon position for new time
