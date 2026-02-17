@@ -1141,12 +1141,12 @@ function updateSkyMapForTime(hour, minute) {
           priority: zone.priority
         }));
 
-        const timestampStr = formatDateForInput(timestamp);
+        // 【修复】将时间合并到ISO格式字符串中，而不是单独的time参数
+        const dateTimeStr = timestamp.toISOString();
 
         const data = await API.getRecommendations({
           location: currentLocation,
-          date: timestampStr,
-          time: `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`,
+          date: dateTimeStr,  // 使用完整的ISO格式时间戳
           equipment: currentEquipment,
           visible_zones: visibleZones,
           filters: {
