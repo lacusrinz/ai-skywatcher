@@ -1,5 +1,5 @@
 """Recommendation engine service"""
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from datetime import datetime
 from app.services.visibility import VisibilityService
 from app.services.scoring import ScoringService
@@ -85,7 +85,22 @@ class RecommendationService:
                 moon_data, date
             )
 
-            # Calculate score with moonlight
+            # Get current position at specified time
+            current_alt, current_az = self.astronomy.calculate_position(
+                target.ra, target.dec,
+                observer_lat, observer_lon,
+                date  # ✅ FIX: 使用传入的date参数
+            )
+
+            # 【新增】检查是否在可视区域内
+            is_in_zone = self._check_target_in_visible_zones(
+                current_az, current_alt, visible_zones
+            )
+
+            # 计算惩罚分数
+            zone_penalty = 0 if is_in_zone else 50
+
+            # Calculate score with moonlight and zone penalty
             score_result = self.scoring.calculate_score(
                 max_altitude=best_window["max_altitude"],
                 magnitude=target.magnitude,
@@ -93,18 +108,12 @@ class RecommendationService:
                 fov_horizontal=equipment.get("fov_horizontal", 2.0),
                 fov_vertical=equipment.get("fov_vertical", 1.5),
                 duration_minutes=best_window["duration_minutes"],
-                moonlight_pollution=moonlight_pollution
+                moonlight_pollution=moonlight_pollution,
+                zone_penalty=zone_penalty
             )
 
             # Determine period
             period = self._determine_period(best_window["start_time"])
-
-            # Get current position at specified time
-            current_alt, current_az = self.astronomy.calculate_position(
-                target.ra, target.dec,
-                observer_lat, observer_lon,
-                date  # ✅ FIX: 使用传入的date参数
-            )
 
             recommendations.append({
                 "target": target.model_dump(),
@@ -273,3 +282,104 @@ class RecommendationService:
             return "严重"
         else:
             return "极严重"
+
+    def _check_target_in_visible_zones(
+        self,
+        azimuth: float,
+        altitude: float,
+        visible_zones: List[VisibleZone]
+    ) -> bool:
+        """
+        检查目标位置是否在任何可视区域内
+
+        Args:
+            azimuth: 目标方位角 (0-360°)
+            altitude: 目标高度角 (0-90°)
+            visible_zones: 可视区域列表
+
+        Returns:
+            True if in any zone, False otherwise
+        """
+        for zone in visible_zones:
+            if self._is_point_in_polygon(azimuth, altitude, zone.polygon):
+                return True
+        return False
+
+    def _is_point_in_polygon(
+        self,
+        az: float,
+        alt: float,
+        polygon: List[Tuple[float, float]]
+    ) -> bool:
+        """
+        射线法判断点是否在多边形内
+
+        Args:
+            az: 点的方位角
+            alt: 点的高度角
+            polygon: 多边形顶点列表 [[az1, alt1], [az2, alt2], ...]
+
+        Returns:
+            True if point is inside polygon, False otherwise
+        """
+        n = len(polygon)
+        if n < 3:
+            return False
+
+        # Check if polygon crosses 0/360 boundary
+        azimuths = [p[0] for p in polygon]
+        crosses_boundary = (max(azimuths) - min(azimuths)) > 180
+
+        # Normalize coordinates once before loop
+        def normalize_azimuth(az_val: float) -> float:
+            if crosses_boundary and az_val > 180:
+                return az_val - 360
+            return az_val
+
+        # Normalize all coordinates
+        point_az = normalize_azimuth(az)
+        normalized_polygon = [(normalize_azimuth(p[0]), p[1]) for p in polygon]
+
+        # Check if point is on any edge (boundary case)
+        for i in range(n):
+            p1 = normalized_polygon[i]
+            p2 = normalized_polygon[(i + 1) % n]
+
+            # Check if point is on this edge
+            if self._point_on_segment(point_az, alt, p1[0], p1[1], p2[0], p2[1]):
+                return True
+
+        # Ray casting algorithm
+        inside = False
+        p1x, p1y = normalized_polygon[0]
+
+        for i in range(1, n + 1):
+            p2x, p2y = normalized_polygon[i % n]
+
+            # Ray casting condition
+            if alt > min(p1y, p2y):
+                if alt <= max(p1y, p2y):
+                    if point_az <= max(p1x, p2x):
+                        if p1y != p2y:
+                            xinters = (alt - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
+                        if p1x == p2x or point_az <= xinters:
+                            inside = not inside
+            p1x, p1y = p2x, p2y
+
+        return inside
+
+    def _point_on_segment(
+        self,
+        px: float, py: float,
+        x1: float, y1: float,
+        x2: float, y2: float
+    ) -> bool:
+        """Check if point (px, py) is on segment from (x1, y1) to (x2, y2)"""
+        # Check if point is within bounding box of segment
+        if not (min(x1, x2) - 1e-9 <= px <= max(x1, x2) + 1e-9 and
+                min(y1, y2) - 1e-9 <= py <= max(y1, y2) + 1e-9):
+            return False
+
+        # Check collinearity using cross product
+        cross = (px - x1) * (y2 - y1) - (py - y1) * (x2 - x1)
+        return abs(cross) < 1e-9
