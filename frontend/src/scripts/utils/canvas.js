@@ -51,6 +51,24 @@ export class SkyMapCanvas {
         selected: false,
         showHeatmap: false,
         heatmapData: null  // { grid: [[{alt, az, pollution}]], resolution }
+      },
+      // 对焦动画状态
+      animationState: {
+        isAnimating: false,
+        startTime: null,
+        startView: null,  // { azimuth, altitude }
+        endView: null,    // { azimuth, altitude }
+        duration: 600,
+        onComplete: null
+      },
+      // 高亮目标状态
+      highlightedTarget: null,  // target ID
+      highlightIntensity: 0,     // 0-1, 脉冲强度
+      // FOV 框当前对准的天体
+      fovTarget: {
+        target: null,        // 天体对象
+        overlapPercentage: 0, // 天体占 FOV 的百分比 (0-1)
+        canvasSize: 0        // 天体在 Canvas 上的像素大小（直径）
       }
     };
 
@@ -251,6 +269,357 @@ export class SkyMapCanvas {
     };
   }
 
+  // ========== 动画工具方法 ==========
+
+  /**
+   * Ease-in-out cubic 缓动函数
+   * @param {number} t - 进度 (0-1)
+   * @returns {number} 缓动后的值
+   */
+  easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  }
+
+  /**
+   * 线性插值
+   * @param {number} start - 起始值
+   * @param {number} end - 结束值
+   * @param {number} t - 进度 (0-1)
+   * @returns {number} 插值结果
+   */
+  lerp(start, end, t) {
+    return start + (end - start) * t;
+  }
+
+  /**
+   * 角度插值（处理 0°/360° 边界）
+   * @param {number} start - 起始角度（度）
+   * @param {number} end - 结束角度（度）
+   * @param {number} t - 进度 (0-1)
+   * @returns {number} 插值后的角度
+   */
+  lerpAngle(start, end, t) {
+    const diff = end - start;
+    const normalizedDiff = ((diff + 180) % 360) - 180;
+    return start + normalizedDiff * t;
+  }
+
+  // ========== 对焦功能方法 ==========
+
+  /**
+   * 平滑对焦到指定目标
+   * @param {Object} target - 目标天体 { azimuth, altitude, id, name }
+   * @param {Object} options - 配置项
+   *   - duration: 动画时长 (ms, 默认 600)
+   *   - elevation: 高度角上抬角度 (默认 15)
+   *   - onComplete: 动画完成回调
+   */
+  focusOnTarget(target, options = {}) {
+    const {
+      duration = 600,
+      elevation = 15,  // 高度角上抬角度，让目标在视野下方
+      onComplete = null
+    } = options;
+
+    // 计算目标视角：方位角对齐，高度角稍微上抬
+    const targetAzimuth = target.azimuth;
+    const targetAltitude = Math.max(0, target.altitude - elevation);
+
+    // 取消正在进行的动画
+    if (this.state.animationState.isAnimating) {
+      this.state.animationState.isAnimating = false;
+    }
+
+    // 记录动画状态
+    this.state.animationState = {
+      isAnimating: true,
+      startTime: null,
+      startView: {
+        azimuth: this.view.azimuth,
+        altitude: this.view.altitude
+      },
+      endView: {
+        azimuth: targetAzimuth,
+        altitude: targetAltitude,
+        zoom: this.view.zoom
+      },
+      duration,
+      onComplete
+    };
+
+    // 启动动画
+    requestAnimationFrame((timestamp) => this.animateFocus(timestamp));
+  }
+
+  /**
+   * 对焦动画循环
+   * @param {number} timestamp - 当前时间戳
+   */
+  animateFocus(timestamp) {
+    if (!this.state.animationState.startTime) {
+      this.state.animationState.startTime = timestamp;
+    }
+
+    const elapsed = timestamp - this.state.animationState.startTime;
+    const progress = Math.min(elapsed / this.state.animationState.duration, 1);
+
+    // 使用 easeInOutCubic 缓动函数
+    const eased = this.easeInOutCubic(progress);
+
+    // 插值计算当前视角
+    this.view.azimuth = this.lerpAngle(
+      this.state.animationState.startView.azimuth,
+      this.state.animationState.endView.azimuth,
+      eased
+    );
+    this.view.altitude = this.lerp(
+      this.state.animationState.startView.altitude,
+      this.state.animationState.endView.altitude,
+      eased
+    );
+
+    this.render();
+
+    // 动画未完成，继续下一帧
+    if (progress < 1) {
+      requestAnimationFrame((t) => this.animateFocus(t));
+    } else {
+      // 动画完成
+      this.state.animationState.isAnimating = false;
+      if (this.state.animationState.onComplete) {
+        this.state.animationState.onComplete();
+      }
+    }
+  }
+
+  // ========== 高亮动画方法 ==========
+
+  /**
+   * 高亮指定天体（脉冲动画）
+   * @param {string} targetId - 天体 ID
+   */
+  highlightTarget(targetId) {
+    this.state.highlightedTarget = targetId;
+
+    const duration = 1500; // 1.5秒
+    const pulses = 3;      // 3次跳动
+    const startTime = performance.now();
+
+    const animate = (timestamp) => {
+      const elapsed = timestamp - startTime;
+      const progress = elapsed / duration;
+
+      if (progress < 1) {
+        // 计算脉冲阶段（0, 1, 2）
+        const pulseProgress = progress * pulses % 1;
+
+        // 脉冲波形：0 → 1 → 0（使用正弦波）
+        const intensity = Math.sin(pulseProgress * Math.PI);
+
+        this.state.highlightIntensity = intensity;
+        this.render();
+        requestAnimationFrame(animate);
+      } else {
+        // 动画结束
+        this.state.highlightedTarget = null;
+        this.state.highlightIntensity = 0;
+        this.render();
+      }
+    };
+
+    requestAnimationFrame(animate);
+  }
+
+  // ========== FOV 叠加方法 ==========
+
+  /**
+   * 将角度转换为 Canvas 像素
+   * @param {number} fovDegrees - FOV 角度
+   * @returns {number} 像素大小
+   */
+  fovToPixels(fovDegrees) {
+    const { fov } = this.config;
+    const { radius } = this.config;
+    return (fovDegrees / fov) * radius * 2;
+  }
+
+  /**
+   * 获取当前 FOV 框在 Canvas 上的像素尺寸
+   * @returns {Object} - { width, height }
+   */
+  getFovPixelSize() {
+    const equipment = window.currentEquipment;
+
+    if (!equipment || !equipment.fov_horizontal) {
+      return {
+        width: this.fovToPixels(10),
+        height: this.fovToPixels(7)
+      };
+    }
+
+    return {
+      width: this.fovToPixels(equipment.fov_horizontal),
+      height: this.fovToPixels(equipment.fov_vertical)
+    };
+  }
+
+  /**
+   * 计算天体在当前 FOV 中的占比
+   * @param {Object} target - 天体对象
+   * @returns {Object} - { overlapPercentage, canvasSize }
+   */
+  calculateTargetFovRatio(target) {
+    const equipment = window.currentEquipment;
+
+    // 天体大小（单位：角分 → 角度）
+    const targetSizeDegrees = target.size / 60;
+
+    // FOV 大小
+    const fovH = equipment?.fov_horizontal || 10;
+    const fovV = equipment?.fov_vertical || 7;
+    const fovDiagonal = Math.sqrt(fovH * fovH + fovV * fovV);
+
+    // 计算天体占 FOV 对角线的百分比
+    const overlapPercentage = Math.min(targetSizeDegrees / fovDiagonal, 2);
+
+    // 计算天体在 Canvas 上的像素大小（直径）
+    const canvasSize = this.fovToPixels(targetSizeDegrees);
+
+    return {
+      overlapPercentage,
+      canvasSize
+    };
+  }
+
+  /**
+   * 检测 FOV 框是否对准某个天体
+   * @returns {Object|null} - { target, overlapPercentage, canvasSize, distance }
+   */
+  checkFovTargetOverlap() {
+    const { fovFrame } = this.state;
+    const { targets } = this.state;
+
+    if (!targets || targets.length === 0) return null;
+
+    // 计算 FOV 框在 Canvas 上的中心点
+    const fovCenter = this.projectFromCenter(
+      fovFrame.center.azimuth,
+      fovFrame.center.altitude
+    );
+
+    if (!fovCenter.visible) return null;
+
+    // 计算阈值距离：FOV 框在 Canvas 上的尺寸的 50%
+    const fovPixelSize = this.getFovPixelSize();
+    const thresholdDistance = Math.min(fovPixelSize.width, fovPixelSize.height) * 0.5;
+
+    // 找到最近的天体
+    let closestTarget = null;
+    let minDistance = Infinity;
+
+    targets.forEach(target => {
+      if (target.altitude <= 0) return;
+
+      const targetPos = this.projectFromCenter(target.azimuth, target.altitude);
+      if (!targetPos.visible) return;
+
+      // 计算屏幕上的距离
+      const dx = targetPos.x - fovCenter.x;
+      const dy = targetPos.y - fovCenter.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (distance < minDistance && distance < thresholdDistance) {
+        minDistance = distance;
+        closestTarget = target;
+      }
+    });
+
+    if (!closestTarget) return null;
+
+    // 计算天体占 FOV 的百分比
+    const { overlapPercentage, canvasSize } = this.calculateTargetFovRatio(closestTarget);
+
+    return {
+      target: closestTarget,
+      overlapPercentage,
+      canvasSize,
+      distance: minDistance
+    };
+  }
+
+  /**
+   * 绘制 FOV 框对准的天体的真实大小轮廓
+   */
+  drawFovTargetOverlay() {
+    const overlap = this.checkFovTargetOverlap();
+
+    if (!overlap) {
+      this.state.fovTarget.target = null;
+      return;
+    }
+
+    // 更新状态
+    this.state.fovTarget = overlap;
+
+    const { target, overlapPercentage, canvasSize } = overlap;
+    const { ctx } = this;
+
+    // 计算天体在 Canvas 上的位置
+    const pos = this.projectFromCenter(target.azimuth, target.altitude);
+    if (!pos.visible) return;
+
+    const radius = canvasSize / 2;
+
+    ctx.save();
+
+    // 绘制天体轮廓（虚线圆）
+    ctx.beginPath();
+    ctx.setLineDash([5, 5]); // 虚线
+    ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+
+    // 根据占比设置颜色
+    let color;
+    if (overlapPercentage > 1) {
+      color = 'rgba(239, 68, 68, 0.6)';  // 红色：天体大于 FOV
+    } else if (overlapPercentage > 0.5) {
+      color = 'rgba(250, 204, 21, 0.6)'; // 黄色：占比较大
+    } else {
+      color = 'rgba(34, 197, 94, 0.6)';  // 绿色：大小合适
+    }
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // 绘制半透明填充
+    ctx.fillStyle = color.replace('0.6', '0.15');
+    ctx.fill();
+
+    // 绘制文本标签
+    ctx.setLineDash([]); // 重置为实线
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+
+    const sizeDegrees = (target.size / 60).toFixed(1); // arcmin → degrees
+    const percentage = Math.round(overlapPercentage * 100);
+
+    ctx.fillText(`${target.name}: ${sizeDegrees}°`, pos.x, pos.y - radius - 8);
+
+    ctx.font = '11px sans-serif';
+    ctx.fillStyle = color.replace('0.6', '1.0');
+    ctx.fillText(
+      overlapPercentage > 1
+        ? `超出 FOV (${percentage}%)`
+        : `${percentage}% FOV`,
+      pos.x,
+      pos.y - radius - 24
+    );
+
+    ctx.restore();
+  }
+
   render() {
     const { ctx, config } = this;
 
@@ -262,6 +631,7 @@ export class SkyMapCanvas {
     this.drawHorizon();
     this.drawVisibleZones();  // 绘制可视区域
     this.drawFOVFrame();      // 绘制 FOV 框
+    this.drawFovTargetOverlay(); // 【新增】绘制 FOV 叠加层
     this.drawMoonlightPollutionHeatmap();  // 绘制月光污染热力图
     this.drawMoon();
     this.drawTargets();
@@ -483,6 +853,29 @@ export class SkyMapCanvas {
       ctx.strokeStyle = isHovered ? '#FFFFFF' : color;
       ctx.lineWidth = isHovered ? 2 : 1;
       ctx.stroke();
+
+      // 【新增】绘制高亮动画效果
+      if (this.state.highlightedTarget === target.id && this.state.highlightIntensity > 0) {
+        const highlightSize = size * (1 + this.state.highlightIntensity * 0.8);
+        const alpha = 0.3 + this.state.highlightIntensity * 0.4;
+
+        ctx.save();
+
+        // 外圈脉冲
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, highlightSize, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        // 内圈高亮
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, highlightSize * 0.6, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.5})`;
+        ctx.fill();
+
+        ctx.restore();
+      }
 
       // 绘制目标名称
       ctx.fillStyle = '#FFFFFF';

@@ -28,6 +28,10 @@ let currentPresetId = null;
 let selectedDate = new Date(); // 用户选择的观测日期
 let savedLocations = [];
 let selectedLocationId = null; // 当前选中的常用地点 ID
+let currentRecommendations = []; // 【新增】当前推荐列表（用于点击事件）
+
+// 【新增】将设备信息暴露到 window，供 Canvas 访问
+window.currentEquipment = currentEquipment;
 
 // Initialize App
 function initApp() {
@@ -460,6 +464,8 @@ async function loadEquipmentPresets() {
           fov_vertical: equipmentPresets[0].fov_vertical
         };
 
+        window.currentEquipment = currentEquipment; // 【新增】同步到 window
+
         // Update input fields
         updateEquipmentInputs(equipmentPresets[0]);
 
@@ -496,6 +502,7 @@ async function handleEquipmentPresetChange(e) {
 
     // Reset FOV display
     currentEquipment = { fov_horizontal: 0, fov_vertical: 0 };
+    window.currentEquipment = currentEquipment; // 【新增】同步到 window
     updateFOVDisplay();
   } else {
     // Disable input fields for preset mode
@@ -509,6 +516,8 @@ async function handleEquipmentPresetChange(e) {
       fov_horizontal: preset.fov_horizontal,
       fov_vertical: preset.fov_vertical
     };
+
+    window.currentEquipment = currentEquipment; // 【新增】同步到 window
 
     updateFOVDisplay();
 
@@ -566,6 +575,9 @@ async function calculateFOVFromInput() {
         fov_horizontal: result.fov_horizontal,
         fov_vertical: result.fov_vertical
       };
+
+      window.currentEquipment = currentEquipment; // 【新增】同步到 window
+
       updateFOVDisplay();
 
       // Update FOV frame size
@@ -630,6 +642,9 @@ async function loadRecommendations(period) {
     });
 
     const recommendations = data.recommendations || [];
+
+    // 【新增】保存推荐数据供点击事件使用
+    currentRecommendations = recommendations;
 
     // Update sky map with new targets
     updateSkyMapTargets(recommendations);
@@ -724,7 +739,31 @@ async function loadRecommendations(period) {
       card.addEventListener('click', () => {
         const targetId = card.dataset.targetId;
         console.log('Clicked target:', targetId);
-        // TODO: Show target details
+
+        // 【新增】从推荐数据中查找目标
+        const target = currentRecommendations.find(rec => rec.target.id === targetId);
+        if (!target) {
+          console.error('Target not found:', targetId);
+          return;
+        }
+
+        // 【新增】对焦到目标
+        skyMap.focusOnTarget(
+          {
+            id: target.target.id,
+            name: target.target.name,
+            azimuth: target.current_position.azimuth,
+            altitude: target.current_position.altitude
+          },
+          {
+            duration: 600,
+            elevation: 15,  // 目标在视野下方 15°，获得更好的视角
+            onComplete: () => {
+              // 对焦完成后高亮目标
+              skyMap.highlightTarget(targetId);
+            }
+          }
+        );
       });
     });
 
